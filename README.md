@@ -1,8 +1,5 @@
 <p align="center">
   <a title="Refer to this for more info about the base Readest Project." href="https://github.com/readest/readest" align="center"></a>
-</p>
-
-<p align="center">
   <a href="#support">Support</a> •
   <a href="#license">License</a>
 </p>
