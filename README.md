@@ -25,21 +25,14 @@
 </div>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#planned-features">Planned Features</a> •
-  <a href="#screenshots">Screenshots</a> •
-  <a href="#downloads">Downloads</a> •
-  <a href="#getting-started">Getting Started</a> •
-  <a href="#troubleshooting">Troubleshooting</a> •
+  <img src="./data/screenshots/landing_all_platforms.png" alt="Readest Banner" width="100%" />
+  <div align="center">
+    <a href="https://readest.com" target="_blank">
+    </a>
+  </div>
   <a href="#support">Support</a> •
   <a href="#license">License</a>
 </p>
-
-<div align="center">
-  <a href="https://readest.com" target="_blank">
-    <img src="./data/screenshots/landing_all_platforms.png" alt="Readest Banner" width="100%" />
-  </a>
-</div>
 
 ## Features
 
