@@ -1,98 +1,9 @@
-<div align="center">
-  <a href="https://readest.com?utm_source=github&utm_medium=referral&utm_campaign=readme" target="_blank">
-    <img src="https://github.com/readest/readest/blob/main/apps/readest-app/src-tauri/icons/icon.png?raw=true" alt="Readest Logo" width="20%" />
-  </a>
-  <h1>Readest</h1>
-  <br>
-
-[Readest][link-website] is an open-source ebook reader designed for immersive and deep reading experiences. Built as a modern rewrite of [Foliate](https://github.com/johnfactotum/foliate), it leverages [Next.js 16](https://github.com/vercel/next.js) and [Tauri v2](https://github.com/tauri-apps/tauri) to deliver a smooth, cross-platform experience across macOS, Windows, Linux, Android, iOS, and the Web.
-
-[![Website][badge-website]][link-website]
-[![Web App][badge-web-app]][link-web-readest]
-[![OS][badge-platforms]][link-website]
-<br>
-[![Discord][badge-discord]][link-discord]
-[![Reddit][badge-reddit]][link-reddit]
-[![AGPL Licence][badge-license]](LICENSE)
-[![Language Coverage][badge-language-coverage]][link-locales]
-[![Donate][badge-donate]][link-donate]
-[![Latest release][badge-release]][link-gh-releases]
-[![Last commit][badge-last-commit]][link-gh-commits]
-[![Commits][badge-commit-activity]][link-gh-pulse]
-[![][badge-hellogithub]][link-hellogithub]
-[![Ask DeepWiki][badge-deepwiki]][link-deepwiki]
-
-</div>
-
 <p align="center">
-  <img src="./data/screenshots/landing_all_platforms.png" alt="Readest Banner" width="100%" />
-  <div align="center">
-    <a href="https://readest.com" target="_blank">
-    </a>
   </div>
   <a href="#support">Support</a> •
   <a href="#license">License</a>
 </p>
 
-## Features
-
-<div align="left">✅ Implemented</div>
-
-| **Feature**                             | **Description**                                                                                                        | **Status** |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------- |
-| **Multi-Format Support**                | Support EPUB, MOBI, KF8 (AZW3), FB2, CBZ, TXT, PDF                                                                     | ✅         |
-| **Scroll/Page View Modes**              | Switch between scrolling or paginated reading modes.                                                                   | ✅         |
-| **Full-Text Search**                    | Search across the entire book to find relevant sections.                                                               | ✅         |
-| **Annotations and Highlighting**        | Add highlights, bookmarks, and notes to enhance your reading experience and use instant mode for quicker interactions. | ✅         |
-| **Dictionary/Wikipedia Lookup**         | Instantly look up words and terms when reading.                                                                        | ✅         |
-| **[Parallel Read][link-parallel-read]** | Read two books or documents simultaneously in a split-screen view.                                                     | ✅         |
-| **Customize Font and Layout**           | Adjust font, layout, theme mode, and theme colors for a personalized experience.                                       | ✅         |
-| **Code Syntax Highlighting**            | Read software manuals with rich coloring of code examples.                                                             | ✅         |
-| **File Association and Open With**      | Quickly open files in Readest in your file browser with one-click.                                                     | ✅         |
-| **Library Management**                  | Organize, sort, and manage your entire ebook library.                                                                  | ✅         |
-| **OPDS/Calibre Integration**            | Integrate OPDS/Calibre to access online libraries and catalogs.                                                        | ✅         |
-| **Translate with DeepL and Yandex**     | From a single sentence to the entire book—translate instantly.                                                         | ✅         |
-| **Text-to-Speech (TTS) Support**        | Enjoy smooth, multilingual narration—even within a single book.                                                        | ✅         |
-| **Sync across Platforms**               | Synchronize book files, reading progress, notes, and bookmarks across all supported platforms.                         | ✅         |
-| **Accessibility**                       | Provides full keyboard navigation and supports for screen readers such as VoiceOver, TalkBack, NVDA, and Orca.         | ✅         |
-| **Visual & Focus Aids**                 | Reading ruler, paragraph-by-paragraph reading mode, and speed reading features.                                        | ✅         |
-
-## Planned Features
-
-<div align="left">🛠 Building</div>
-<div align="left">🔄 Planned</div>
-
-| **Feature**                                | **Description**                                                                            | **Priority** |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------ |
-| [**Sync with Koreader**][link-kosync-wiki] | Synchronize reading progress, notes, and bookmarks with [Koreader][link-koreader] devices. | 🛠           |
-| **AI-Powered Summarization**               | Generate summaries of books or chapters using AI for quick insights.                       | 🛠           |
-| **Advanced Reading Stats**                 | Track reading time, pages read, and more for detailed insights.                            | 🛠           |
-| **Audiobook Support**                      | Extend functionality to play and manage audiobooks.                                        | 🔄           |
-| **Handwriting Annotations**                | Add support for handwriting annotations using a pen on compatible devices.                 | 🔄           |
-| **In-Library Full-Text Search**            | Search across your entire ebook library to find topics and quotes.                         | 🔄           |
-
-Stay tuned for continuous improvements and updates! Contributions and suggestions are always welcome—let's build the ultimate reading experience together. 😊
-
-## Screenshots
-
-![Annotations](./data/screenshots/annotations.png)
-
-![TTS](./data/screenshots/tts_speak_aloud.png)
-
-![DeepL](./data/screenshots/deepl.png)
-
-![Footnote](./data/screenshots/footnote_popover.png)
-
-![Wikipedia](./data/screenshots/wikipedia_vertical.png)
-
-![Theming Dark Mode](./data/screenshots/theming_dark_mode.png)
-
----
-
-<p align="center">
-  <a title="Please refer to the main project for documentation on base features" href="https://github.com/readest/readest" target="_blank">
-  </a>
-</p>
 ## Contributors
 
 Readest is open-source, and contributions are welcome! Feel free to open issues, suggest features, or submit pull requests. Please **review our [contributing guidelines](CONTRIBUTING.md) before you start**. We also welcome you to join our [Discord][link-discord] community for either support or contributing guidance.
