@@ -1,3 +1,5 @@
+<a title="Refer to this for more info about the base Readest Project." href="https://github.com/readest/readest" align="center">
+</a> 
 <p align="center">
   </div>
   <a href="#support">Support</a> •
