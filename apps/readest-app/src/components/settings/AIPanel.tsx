@@ -8,6 +8,8 @@ import { useEnv } from '@/context/EnvContext';
 import { getAIProvider } from '@/services/ai/providers';
 import { DEFAULT_AI_SETTINGS, GATEWAY_MODELS, MODEL_PRICING } from '@/services/ai/constants';
 import type { AISettings, AIProviderName } from '@/services/ai/types';
+import { DEFAULT_CONTEXT_TRANSLATION_SETTINGS } from '@/services/contextTranslation/defaults';
+import type { ContextTranslationSettings } from '@/services/contextTranslation/types';
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 type CustomModelStatus = 'idle' | 'validating' | 'valid' | 'invalid';
@@ -67,6 +69,14 @@ const AIPanel: React.FC = () => {
 
   const aiSettings: AISettings = settings?.aiSettings ?? DEFAULT_AI_SETTINGS;
 
+  const ctxTransSettings: ContextTranslationSettings =
+    settings?.globalReadSettings?.contextTranslation ?? DEFAULT_CONTEXT_TRANSLATION_SETTINGS;
+
+  const [ctxEnabled, setCtxEnabled] = useState(ctxTransSettings.enabled);
+  const [ctxTargetLang, setCtxTargetLang] = useState(ctxTransSettings.targetLanguage);
+  const [ctxRecentPages, setCtxRecentPages] = useState(ctxTransSettings.recentContextPages);
+  const [ctxOutputFields, setCtxOutputFields] = useState(ctxTransSettings.outputFields);
+
   const [enabled, setEnabled] = useState(aiSettings.enabled);
   const [provider, setProvider] = useState<AIProviderName>(aiSettings.provider);
   const [ollamaUrl, setOllamaUrl] = useState(aiSettings.ollamaBaseUrl);
@@ -114,6 +124,20 @@ const AIPanel: React.FC = () => {
 
       setSettings(newSettings);
       await saveSettings(envConfig, newSettings);
+    },
+    [envConfig, setSettings, saveSettings],
+  );
+
+  const saveCtxTransSetting = useCallback(
+    (patch: Partial<ContextTranslationSettings>) => {
+      const currentSettings = settingsRef.current;
+      if (!currentSettings) return;
+      const current: ContextTranslationSettings =
+        currentSettings.globalReadSettings.contextTranslation ??
+        DEFAULT_CONTEXT_TRANSLATION_SETTINGS;
+      currentSettings.globalReadSettings.contextTranslation = { ...current, ...patch };
+      setSettings(currentSettings);
+      saveSettings(envConfig, currentSettings);
     },
     [envConfig, setSettings, saveSettings],
   );
@@ -546,6 +570,110 @@ const AIPanel: React.FC = () => {
                   </span>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className='w-full'>
+        <h2 className='mb-2 font-medium'>{_('Context-Aware Translation')}</h2>
+        <p className='text-base-content/70 mb-3 text-sm'>
+          {_(
+            'When enabled, selecting text in the reader sends surrounding page context to the AI model for a richer, context-aware translation.',
+          )}
+        </p>
+        <div className='card border-base-200 bg-base-100 border shadow'>
+          <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
+              <span>{_('Enable Context-Aware Translation')}</span>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={ctxEnabled}
+                onChange={() => {
+                  const next = !ctxEnabled;
+                  setCtxEnabled(next);
+                  saveCtxTransSetting({ enabled: next });
+                }}
+              />
+            </div>
+
+            <div
+              className={clsx(
+                'config-item !h-auto flex-col !items-start gap-2 py-3',
+                !ctxEnabled && 'pointer-events-none select-none opacity-50',
+              )}
+            >
+              <span>{_('Target Language')}</span>
+              <select
+                className='select select-bordered select-sm bg-base-100 text-base-content w-full'
+                value={ctxTargetLang}
+                disabled={!ctxEnabled}
+                onChange={(e) => {
+                  setCtxTargetLang(e.target.value);
+                  saveCtxTransSetting({ targetLanguage: e.target.value });
+                }}
+              >
+                <option value='en'>{_('English')}</option>
+                <option value='zh'>{_('Chinese (Simplified)')}</option>
+                <option value='zh-TW'>{_('Chinese (Traditional)')}</option>
+                <option value='ja'>{_('Japanese')}</option>
+                <option value='ko'>{_('Korean')}</option>
+                <option value='es'>{_('Spanish')}</option>
+                <option value='fr'>{_('French')}</option>
+                <option value='de'>{_('German')}</option>
+                <option value='pt'>{_('Portuguese')}</option>
+                <option value='ru'>{_('Russian')}</option>
+                <option value='ar'>{_('Arabic')}</option>
+              </select>
+            </div>
+
+            <div
+              className={clsx(
+                'config-item',
+                !ctxEnabled && 'pointer-events-none select-none opacity-50',
+              )}
+            >
+              <span>{_('Recent Context Pages')}</span>
+              <input
+                type='number'
+                className='input input-bordered input-sm w-20 text-right'
+                min={1}
+                max={20}
+                value={ctxRecentPages}
+                disabled={!ctxEnabled}
+                onChange={(e) => {
+                  const val = Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 1));
+                  setCtxRecentPages(val);
+                  saveCtxTransSetting({ recentContextPages: val });
+                }}
+              />
+            </div>
+
+            <div className={clsx(!ctxEnabled && 'pointer-events-none select-none opacity-50')}>
+              <div className='px-4 py-2 text-sm font-medium'>{_('Output Fields')}</div>
+              {ctxOutputFields
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .map((field) => (
+                  <div key={field.id} className='config-item border-base-200 border-t'>
+                    <span className='text-sm'>{_(field.label)}</span>
+                    <input
+                      type='checkbox'
+                      className='toggle toggle-sm'
+                      checked={field.enabled}
+                      disabled={!ctxEnabled || field.id === 'translation'}
+                      onChange={() => {
+                        if (field.id === 'translation') return;
+                        const updated = ctxOutputFields.map((f) =>
+                          f.id === field.id ? { ...f, enabled: !f.enabled } : f,
+                        );
+                        setCtxOutputFields(updated);
+                        saveCtxTransSetting({ outputFields: updated });
+                      }}
+                    />
+                  </div>
+                ))}
             </div>
           </div>
         </div>

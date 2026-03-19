@@ -27,6 +27,7 @@ import { UserStorageQuota, UserDailyTranslationQuota } from '@/types/quota';
 import { getDefaultMaxBlockSize, getDefaultMaxInlineSize } from '@/utils/config';
 import { stubTranslation as _ } from '@/utils/misc';
 import { DEFAULT_AI_SETTINGS } from './ai/constants';
+import { DEFAULT_CONTEXT_TRANSLATION_SETTINGS } from './contextTranslation/defaults';
 
 export const DATA_SUBDIR = 'Readest';
 export const LOCAL_BOOKS_SUBDIR = `${DATA_SUBDIR}/Books`;
@@ -150,6 +151,7 @@ export const DEFAULT_READSETTINGS: ReadSettings = {
   customHighlightColors: HIGHLIGHT_COLOR_HEX,
   userHighlightColors: [],
   customTtsHighlightColors: [],
+  contextTranslation: DEFAULT_CONTEXT_TRANSLATION_SETTINGS,
 };
 
 export const DEFAULT_MOBILE_READSETTINGS: Partial<ReadSettings> = {

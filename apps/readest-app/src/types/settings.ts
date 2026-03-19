@@ -4,6 +4,7 @@ import { CustomTexture } from '@/styles/textures';
 import { HighlightColor, HighlightStyle, ViewSettings } from './book';
 import { OPDSCatalog } from './opds';
 import type { AISettings } from '@/services/ai/types';
+import type { ContextTranslationSettings } from '@/services/contextTranslation/types';
 import type { NotebookTab } from '@/store/notebookStore';
 
 export type ThemeType = 'light' | 'dark' | 'auto';
@@ -51,6 +52,8 @@ export interface ReadSettings {
   userHighlightColors: string[];
   customTtsHighlightColors: string[];
   customThemes: CustomTheme[];
+
+  contextTranslation?: ContextTranslationSettings;
 }
 
 export interface KOSyncSettings {
