@@ -4,7 +4,11 @@ import { DEFAULT_AI_SETTINGS } from '@/services/ai/constants';
 import { getAIProvider } from '@/services/ai/providers';
 import { buildPopupContextBundle } from '@/services/contextTranslation/popupRetrievalService';
 import { streamTranslationWithContext } from '@/services/contextTranslation/translationService';
-import { runContextLookup } from '@/services/contextTranslation/contextLookupService';
+import {
+  buildContextLookupTelemetryPayload,
+  contextLookupTelemetry,
+  runContextLookup,
+} from '@/services/contextTranslation/contextLookupService';
 import type {
   ContextTranslationSettings,
   PopupContextBundle,
@@ -14,6 +18,7 @@ import type {
   TranslationStreamResult,
 } from '@/services/contextTranslation/types';
 import { saveVocabularyEntry } from '@/services/contextTranslation/vocabularyService';
+import { detectLookupLanguage } from '@/services/contextTranslation/languagePolicy';
 import { validateLookupResult } from '@/services/contextTranslation/validator';
 import type { ValidationDecision } from '@/services/contextTranslation/validator';
 import { useSettingsStore } from '@/store/settingsStore';
@@ -135,6 +140,21 @@ export function useContextLookup({
                 selectedText,
               );
               setValidationDecision(validation.decision);
+              const detectedLanguage = detectLookupLanguage(selectedText);
+              contextLookupTelemetry.logOutcome(
+                buildContextLookupTelemetryPayload({
+                  mode: 'translation',
+                  selectedText,
+                  targetLanguage: requestSnapshot.settings.targetLanguage,
+                  sourceLanguage: detectedLanguage.language,
+                  detectedLanguage,
+                  validationDecision: validation.decision,
+                  repairCount: 0,
+                  degradationPath:
+                    validation.decision === 'degrade' ? 'stream-final-degrade' : 'none',
+                  rawResponse: streamUpdate.rawText,
+                }),
+              );
             }
           }
         } else {
