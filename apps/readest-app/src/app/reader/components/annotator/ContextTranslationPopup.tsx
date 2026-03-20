@@ -8,6 +8,7 @@ import { useContextTranslation } from '@/hooks/useContextTranslation';
 import useOpenAIInNotebook from '@/app/reader/hooks/useOpenAIInNotebook';
 import { useTranslation } from '@/hooks/useTranslation';
 import type {
+  LookupAnnotations,
   ContextTranslationSettings,
   PopupContextBundle,
   PopupRetrievalHints,
@@ -15,10 +16,13 @@ import type {
   TranslationResult,
 } from '@/services/contextTranslation/types';
 import {
-  classifyExampleMatch,
   findExampleMatchRanges,
   type ExampleMatchRange,
 } from '@/services/contextTranslation/exampleMatcher';
+import {
+  filterRenderableExamples,
+  parseStructuredExamples,
+} from '@/services/contextTranslation/exampleFormatter';
 import { Position } from '@/utils/sel';
 
 interface ContextTranslationPopupProps {
@@ -34,17 +38,7 @@ interface ContextTranslationPopupProps {
   onDismiss?: () => void;
 }
 
-interface ParsedExampleItem {
-  sourceLine: string;
-  englishLine: string | null;
-  chineseLine: string | null;
-  extraLines: string[];
-}
-
 const HAN_REGEX = /[\u3400-\u9fff]/u;
-const PINYIN_LINE_REGEX = /^Pinyin:\s*/iu;
-const ENGLISH_LINE_REGEX = /^English:\s*/iu;
-const CHINESE_LINE_REGEX = /^Chinese:\s*/iu;
 
 function isChineseText(value: string): boolean {
   return HAN_REGEX.test(value);
@@ -195,60 +189,6 @@ function HighlightedText({
   return <span className={className}>{segments}</span>;
 }
 
-function parseExampleItems(value: string): string[] {
-  return value
-    .split(/\n{2,}/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function stripExampleNumbering(value: string): string {
-  return value.replace(/^\d+\.\s*/, '');
-}
-
-function parseExampleItem(item: string): ParsedExampleItem {
-  const lines = item
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const [firstLine = ''] = lines;
-  const sourceLine = stripExampleNumbering(firstLine);
-  const englishLine = lines.find((line) => ENGLISH_LINE_REGEX.test(line)) ?? null;
-  const chineseLine =
-    lines.find((line) => CHINESE_LINE_REGEX.test(line)) ??
-    lines.find(
-      (line, index) =>
-        index > 0 &&
-        !PINYIN_LINE_REGEX.test(line) &&
-        !ENGLISH_LINE_REGEX.test(line) &&
-        HAN_REGEX.test(line),
-    ) ??
-    null;
-
-  return {
-    sourceLine,
-    englishLine,
-    chineseLine,
-    extraLines: lines.filter(
-      (line, index) =>
-        index > 0 && !PINYIN_LINE_REGEX.test(line) && line !== englishLine && line !== chineseLine,
-    ),
-  };
-}
-
-function hasRenderableExampleMatch(item: string, selectedText: string): boolean {
-  const parsedItem = parseExampleItem(item);
-  const candidates = [
-    parsedItem.sourceLine,
-    parsedItem.chineseLine?.replace(CHINESE_LINE_REGEX, ''),
-    parsedItem.englishLine?.replace(ENGLISH_LINE_REGEX, ''),
-  ].filter(Boolean);
-
-  return candidates
-    .filter((c): c is string => c !== undefined)
-    .some((candidate) => classifyExampleMatch(candidate, selectedText).kind !== 'none');
-}
-
 function formatVolumeList(values: number[]): string {
   if (values.length === 0) return '';
   return values.join(', ');
@@ -334,6 +274,13 @@ function buildAskAboutThisMessage(
   return sections.join('\n\n');
 }
 
+function renderExamplePhonetic(annotation: LookupAnnotations | undefined, exampleId: string) {
+  const phonetic = annotation?.examples?.[exampleId]?.phonetic;
+  if (!phonetic) return null;
+
+  return <p className='mb-1 text-[0.7rem] font-medium text-cyan-200'>{phonetic}</p>;
+}
+
 const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
   bookKey,
   bookHash,
@@ -360,6 +307,8 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
     retrievalStatus,
     retrievalHints,
     popupContext,
+    examples,
+    annotations,
     saveToVocabulary,
   } = useContextTranslation({
     bookKey,
@@ -374,7 +323,18 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
     .sort((a, b) => a.order - b.order);
   const displayedResult = result ?? partialResult ?? {};
   const hasDisplayedResult = Object.keys(displayedResult).length > 0;
-  const selectedTextPinyin = isChineseText(selectedText) ? getPinyinLabel(selectedText) : '';
+  const displayedExamples =
+    examples.length > 0
+      ? examples
+      : displayedResult['examples']
+        ? filterRenderableExamples(
+            parseStructuredExamples(displayedResult['examples']),
+            selectedText,
+          )
+        : [];
+  const selectedTextPinyin =
+    annotations?.source?.phonetic ??
+    (isChineseText(selectedText) ? getPinyinLabel(selectedText) : '');
   const retrievalStatusMeta = getRetrievalStatusMeta(retrievalStatus);
   const retrievalInfoText = buildRetrievalInfoText(retrievalStatus, retrievalHints);
 
@@ -478,78 +438,54 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
             enabledFields.map((field) => {
               const value = displayedResult[field.id] ?? '';
               const isActive = streaming && activeFieldId === field.id;
-              const exampleItems =
-                field.id === 'examples' && value
-                  ? parseExampleItems(value).filter((item) =>
-                      hasRenderableExampleMatch(item, selectedText),
-                    )
-                  : [];
 
               return (
                 <div key={field.id}>
                   <h3 className='mb-1 text-xs font-medium uppercase tracking-wide text-gray-400'>
                     {_(field.label)}
                   </h3>
-                  {field.id === 'examples' && exampleItems.length > 0 ? (
+                  {field.id === 'examples' && displayedExamples.length > 0 ? (
                     <ol className='not-eink:text-white/90 select-text list-decimal space-y-4 pl-5 text-sm leading-relaxed'>
-                      {exampleItems.map((item, index) => {
-                        const parsedExample = parseExampleItem(item);
-                        const sourceIsChinese = isChineseText(parsedExample.sourceLine);
+                      {displayedExamples.map((example, index) => {
+                        const sourceIsChinese = isChineseText(example.sourceText);
+                        const targetIsChinese = isChineseText(example.targetText);
 
                         return (
-                          <li key={`${field.id}-${index}`} className='space-y-2'>
-                            {parsedExample.sourceLine ? (
+                          <li key={example.exampleId} className='space-y-2'>
+                            {example.sourceText ? (
                               <div className='leading-8'>
+                                {renderExamplePhonetic(annotations?.source, example.exampleId)}
                                 {sourceIsChinese ? (
                                   <RubyText
-                                    text={parsedExample.sourceLine}
+                                    text={example.sourceText}
                                     highlightText={selectedText}
                                     className='not-eink:text-white/95'
                                   />
                                 ) : (
                                   <HighlightedText
-                                    text={parsedExample.sourceLine}
+                                    text={example.sourceText}
                                     highlightText={selectedText}
                                     className='not-eink:text-white/95'
                                   />
                                 )}
                               </div>
                             ) : null}
-                            {parsedExample.englishLine ? (
-                              <p className='whitespace-pre-wrap text-white/80'>
-                                {parsedExample.englishLine}
-                              </p>
-                            ) : null}
-                            {parsedExample.chineseLine ? (
+                            {example.targetText ? (
                               <div className='leading-8 text-white/80'>
-                                {CHINESE_LINE_REGEX.test(parsedExample.chineseLine) ? (
-                                  <>
-                                    <span>Chinese: </span>
-                                    <RubyText
-                                      text={parsedExample.chineseLine.replace(
-                                        CHINESE_LINE_REGEX,
-                                        '',
-                                      )}
-                                      className='not-eink:text-white/90'
-                                    />
-                                  </>
-                                ) : (
+                                {renderExamplePhonetic(annotations?.target, example.exampleId)}
+                                {targetIsChinese ? (
                                   <RubyText
-                                    text={parsedExample.chineseLine}
+                                    text={example.targetText}
                                     className='not-eink:text-white/90'
                                   />
+                                ) : (
+                                  <p className='whitespace-pre-wrap text-white/80'>
+                                    {example.targetText}
+                                  </p>
                                 )}
                               </div>
                             ) : null}
-                            {parsedExample.extraLines.map((line, lineIndex) => (
-                              <p
-                                key={`${field.id}-${index}-${lineIndex}`}
-                                className='whitespace-pre-wrap text-white/80'
-                              >
-                                {line}
-                              </p>
-                            ))}
-                            {isActive && index === exampleItems.length - 1 ? (
+                            {isActive && index === displayedExamples.length - 1 ? (
                               <span className='ml-1 animate-pulse'>|</span>
                             ) : null}
                           </li>

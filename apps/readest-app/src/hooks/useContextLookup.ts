@@ -3,23 +3,19 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { DEFAULT_AI_SETTINGS } from '@/services/ai/constants';
 import { getAIProvider } from '@/services/ai/providers';
 import { buildPopupContextBundle } from '@/services/contextTranslation/popupRetrievalService';
-import { streamTranslationWithContext } from '@/services/contextTranslation/translationService';
-import {
-  buildContextLookupTelemetryPayload,
-  contextLookupTelemetry,
-  runContextLookup,
-} from '@/services/contextTranslation/contextLookupService';
+import { runContextLookup } from '@/services/contextTranslation/contextLookupService';
 import type {
+  LookupAnnotationSlots,
+  LookupExample,
+  ContextDictionarySettings,
   ContextTranslationSettings,
   PopupContextBundle,
   PopupRetrievalHints,
   RetrievalStatus,
   TranslationResult,
-  TranslationStreamResult,
 } from '@/services/contextTranslation/types';
 import { saveVocabularyEntry } from '@/services/contextTranslation/vocabularyService';
 import { detectLookupLanguage } from '@/services/contextTranslation/languagePolicy';
-import { validateLookupResult } from '@/services/contextTranslation/validator';
 import type { ValidationDecision } from '@/services/contextTranslation/validator';
 import { useSettingsStore } from '@/store/settingsStore';
 
@@ -30,6 +26,7 @@ export interface UseContextLookupInput {
   selectedText: string;
   currentPage: number;
   settings: ContextTranslationSettings;
+  dictionarySettings?: ContextDictionarySettings;
 }
 
 export interface UseContextLookupResult {
@@ -43,6 +40,8 @@ export interface UseContextLookupResult {
   retrievalStatus: RetrievalStatus;
   retrievalHints: PopupRetrievalHints;
   popupContext: PopupContextBundle | null;
+  examples: LookupExample[];
+  annotations: LookupAnnotationSlots | null;
   saveToVocabulary: () => Promise<void>;
 }
 
@@ -59,6 +58,7 @@ export function useContextLookup({
   selectedText,
   currentPage,
   settings,
+  dictionarySettings,
 }: UseContextLookupInput): UseContextLookupResult {
   const { settings: appSettings } = useSettingsStore();
   const [result, setResult] = useState<TranslationResult | null>(null);
@@ -68,6 +68,8 @@ export function useContextLookup({
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [popupContext, setPopupContext] = useState<PopupContextBundle | null>(null);
+  const [examples, setExamples] = useState<LookupExample[]>([]);
+  const [annotations, setAnnotations] = useState<LookupAnnotationSlots | null>(null);
   const [validationDecision, setValidationDecision] = useState<ValidationDecision | null>(null);
   const contextRef = useRef<string>('');
 
@@ -75,6 +77,7 @@ export function useContextLookup({
     () => ({
       currentPage,
       settings,
+      dictionarySettings,
       aiSettings: appSettings?.aiSettings ?? DEFAULT_AI_SETTINGS,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,6 +96,8 @@ export function useContextLookup({
     setPartialResult(null);
     setActiveFieldId(null);
     setPopupContext(null);
+    setExamples([]);
+    setAnnotations(null);
     setValidationDecision(null);
 
     const run = async () => {
@@ -110,72 +115,24 @@ export function useContextLookup({
 
         setPopupContext(bundle);
 
-        if (mode === 'translation') {
-          const model = getAIProvider(requestSnapshot.aiSettings).getModel();
-          for await (const translated of streamTranslationWithContext(
-            {
-              selectedText,
-              popupContext: bundle,
-              targetLanguage: requestSnapshot.settings.targetLanguage,
-              outputFields: requestSnapshot.settings.outputFields,
-            },
-            model,
-            abortController.signal,
-          )) {
-            if (cancelled) return;
+        const model = getAIProvider(requestSnapshot.aiSettings).getModel();
+        const lookupResult = await runContextLookup({
+          mode,
+          selectedText,
+          popupContext: bundle,
+          targetLanguage: requestSnapshot.settings.targetLanguage,
+          outputFields: requestSnapshot.settings.outputFields,
+          dictionarySettings: requestSnapshot.dictionarySettings,
+          model,
+          abortSignal: abortController.signal,
+        });
 
-            const streamUpdate = translated as TranslationStreamResult;
-            setLoading(false);
-            setPartialResult(streamUpdate.fields);
-            setActiveFieldId(streamUpdate.activeFieldId);
-            setStreaming(!streamUpdate.done);
+        if (cancelled) return;
 
-            if (streamUpdate.done) {
-              setResult(streamUpdate.fields);
-              const primaryField =
-                requestSnapshot.settings.outputFields.find((f) => f.enabled)?.id ?? 'translation';
-              const validation = validateLookupResult(
-                streamUpdate.fields,
-                primaryField,
-                selectedText,
-              );
-              setValidationDecision(validation.decision);
-              const detectedLanguage = detectLookupLanguage(selectedText);
-              contextLookupTelemetry.logOutcome(
-                buildContextLookupTelemetryPayload({
-                  mode: 'translation',
-                  selectedText,
-                  targetLanguage: requestSnapshot.settings.targetLanguage,
-                  sourceLanguage: detectedLanguage.language,
-                  detectedLanguage,
-                  validationDecision: validation.decision,
-                  repairCount: 0,
-                  degradationPath:
-                    validation.decision === 'degrade' ? 'stream-final-degrade' : 'none',
-                  rawResponse: streamUpdate.rawText,
-                }),
-              );
-            }
-          }
-        } else {
-          // dictionary mode: call runContextLookup (non-streaming)
-          const model = getAIProvider(requestSnapshot.aiSettings).getModel();
-          const lookupResult = await runContextLookup({
-            mode: 'dictionary',
-            selectedText,
-            popupContext: bundle,
-            targetLanguage: requestSnapshot.settings.targetLanguage,
-            outputFields: requestSnapshot.settings.outputFields,
-            model,
-            abortSignal: abortController.signal,
-          });
-
-          if (cancelled) return;
-
-          setResult(lookupResult.fields);
-          setValidationDecision(lookupResult.validationDecision);
-          setLoading(false);
-        }
+        setResult(lookupResult.fields);
+        setExamples(lookupResult.examples ?? []);
+        setAnnotations(lookupResult.annotations ?? {});
+        setValidationDecision(lookupResult.validationDecision);
       } catch (err) {
         if (!cancelled && (err as Error).name !== 'AbortError') {
           setError(err instanceof Error ? err.message : String(err));
@@ -196,13 +153,21 @@ export function useContextLookup({
 
   const saveToVocabulary = useCallback(async () => {
     if (!result) return;
+    const detectedLanguage = detectLookupLanguage(selectedText);
     await saveVocabularyEntry({
       bookHash,
       term: selectedText,
       context: contextRef.current,
       result,
+      mode,
+      sourceLanguage: detectedLanguage.language,
+      targetLanguage: mode === 'translation' ? settings.targetLanguage : undefined,
+      examples: examples.map((example) => ({
+        exampleId: example.exampleId,
+        text: `${example.sourceText}\n${example.targetText}`,
+      })),
     });
-  }, [bookHash, selectedText, result]);
+  }, [bookHash, examples, mode, result, selectedText, settings.targetLanguage]);
 
   return {
     result,
@@ -215,6 +180,8 @@ export function useContextLookup({
     retrievalStatus: popupContext?.retrievalStatus ?? 'local-only',
     retrievalHints: popupContext?.retrievalHints ?? EMPTY_RETRIEVAL_HINTS,
     popupContext,
+    examples,
+    annotations,
     saveToVocabulary,
   };
 }

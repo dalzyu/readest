@@ -10,9 +10,6 @@ import type {
 vi.mock('@/services/contextTranslation/popupRetrievalService', () => ({
   buildPopupContextBundle: vi.fn(),
 }));
-vi.mock('@/services/contextTranslation/translationService', () => ({
-  streamTranslationWithContext: vi.fn(),
-}));
 vi.mock('@/services/contextTranslation/vocabularyService', () => ({
   saveVocabularyEntry: vi.fn(),
 }));
@@ -22,9 +19,14 @@ vi.mock('@/store/settingsStore', () => ({
 vi.mock('@/services/ai/providers', () => ({
   getAIProvider: () => ({ getModel: () => 'mock-model' }),
 }));
+vi.mock('@/services/contextTranslation/contextLookupService', () => ({
+  runContextLookup: vi.fn(),
+  buildContextLookupTelemetryPayload: vi.fn(),
+  contextLookupTelemetry: { logOutcome: vi.fn() },
+}));
 
 import { buildPopupContextBundle } from '@/services/contextTranslation/popupRetrievalService';
-import { streamTranslationWithContext } from '@/services/contextTranslation/translationService';
+import { runContextLookup } from '@/services/contextTranslation/contextLookupService';
 import { saveVocabularyEntry } from '@/services/contextTranslation/vocabularyService';
 import { useContextTranslation } from '@/hooks/useContextTranslation';
 
@@ -82,17 +84,15 @@ const popupContextBundle: PopupContextBundle = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(buildPopupContextBundle).mockResolvedValue(popupContextBundle);
-  vi.mocked(streamTranslationWithContext).mockImplementation(async function* () {
-    yield {
-      fields: {
-        translation: 'close friend',
-        contextualMeaning: 'A soulmate who truly understands you.',
-      },
-      activeFieldId: null,
-      rawText:
-        '<translation>close friend</translation><contextualMeaning>A soulmate who truly understands you.</contextualMeaning>',
-      done: true,
-    };
+  vi.mocked(runContextLookup).mockResolvedValue({
+    fields: {
+      translation: 'close friend',
+      contextualMeaning: 'A soulmate who truly understands you.',
+    },
+    examples: [],
+    annotations: {},
+    validationDecision: 'accept',
+    detectedLanguage: { language: 'zh', confidence: 0.9, mixed: false },
   });
   vi.mocked(saveVocabularyEntry).mockResolvedValue({
     id: 'saved-id',
@@ -138,23 +138,20 @@ describe('useContextTranslation', () => {
     );
   });
 
-  test('passes the popup context bundle into streaming translation', async () => {
+  test('passes the popup context bundle into the shared lookup service', async () => {
     renderHook(() => useContextTranslation(defaultProps));
 
-    await waitFor(() =>
-      expect(vi.mocked(streamTranslationWithContext).mock.calls.length).toBeGreaterThan(0),
-    );
+    await waitFor(() => expect(vi.mocked(runContextLookup).mock.calls.length).toBeGreaterThan(0));
 
-    const callArg = vi.mocked(streamTranslationWithContext).mock.calls[0]![0];
+    const callArg = vi.mocked(runContextLookup).mock.calls[0]![0];
     expect(callArg.selectedText).toBe('知己');
     expect(callArg.popupContext).toEqual(popupContextBundle);
     expect(callArg.targetLanguage).toBe('en');
+    expect(callArg.mode).toBe('translation');
   });
 
-  test('sets error when translation fails', async () => {
-    vi.mocked(streamTranslationWithContext).mockImplementationOnce(async function* () {
-      throw new Error('LLM unavailable');
-    });
+  test('sets error when lookup fails', async () => {
+    vi.mocked(runContextLookup).mockRejectedValueOnce(new Error('LLM unavailable'));
 
     const { result } = renderHook(() => useContextTranslation(defaultProps));
 
@@ -164,7 +161,7 @@ describe('useContextTranslation', () => {
     expect(result.current.result).toBeNull();
   });
 
-  test('saveToVocabulary persists result with the local past context', async () => {
+  test('saveToVocabulary persists result with lookup metadata', async () => {
     const { result } = renderHook(() => useContextTranslation(defaultProps));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -178,6 +175,9 @@ describe('useContextTranslation', () => {
         bookHash: 'hash-abc',
         term: '知己',
         context: popupContextBundle.localPastContext,
+        mode: 'translation',
+        sourceLanguage: 'zh',
+        targetLanguage: 'en',
         result: {
           translation: 'close friend',
           contextualMeaning: 'A soulmate who truly understands you.',
@@ -193,12 +193,12 @@ describe('useContextTranslation', () => {
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(vi.mocked(streamTranslationWithContext)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runContextLookup)).toHaveBeenCalledTimes(1);
 
     rerender({ ...defaultProps, selectedText: '朋友' });
 
-    await waitFor(() => expect(vi.mocked(streamTranslationWithContext)).toHaveBeenCalledTimes(2));
-    const secondCall = vi.mocked(streamTranslationWithContext).mock.calls[1]![0];
+    await waitFor(() => expect(vi.mocked(runContextLookup)).toHaveBeenCalledTimes(2));
+    const secondCall = vi.mocked(runContextLookup).mock.calls[1]![0];
     expect(secondCall.selectedText).toBe('朋友');
   });
 
@@ -209,13 +209,13 @@ describe('useContextTranslation', () => {
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(vi.mocked(streamTranslationWithContext)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runContextLookup)).toHaveBeenCalledTimes(1);
 
     rerender({ ...defaultProps, currentPage: 6 });
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(vi.mocked(streamTranslationWithContext)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runContextLookup)).toHaveBeenCalledTimes(1);
   });
 
   test('does not translate when selectedText is empty', async () => {
@@ -223,15 +223,15 @@ describe('useContextTranslation', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    expect(streamTranslationWithContext).not.toHaveBeenCalled();
+    expect(runContextLookup).not.toHaveBeenCalled();
   });
 
-  test('waits for the popup context bundle before streaming translation begins', async () => {
-    let resolveContext: ((value: PopupContextBundle) => void) | null = null;
+  test('waits for the popup context bundle before lookup begins', async () => {
+    let resolveContext: (value: PopupContextBundle) => void = () => {};
 
     vi.mocked(buildPopupContextBundle).mockImplementation(
       () =>
-        new Promise((resolve) => {
+        new Promise<PopupContextBundle>((resolve) => {
           resolveContext = resolve;
         }),
     );
@@ -239,54 +239,19 @@ describe('useContextTranslation', () => {
     renderHook(() => useContextTranslation(defaultProps));
 
     await waitFor(() => expect(buildPopupContextBundle).toHaveBeenCalledTimes(1));
-    expect(streamTranslationWithContext).not.toHaveBeenCalled();
+    expect(runContextLookup).not.toHaveBeenCalled();
 
-    (resolveContext as ((value: PopupContextBundle) => void) | null)?.(popupContextBundle);
+    resolveContext(popupContextBundle);
 
-    await waitFor(() => expect(streamTranslationWithContext).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(runContextLookup).toHaveBeenCalledTimes(1));
   });
 
-  test('publishes partial result updates while streaming', async () => {
-    let releaseFinalChunk: (() => void) | null = null;
-
-    vi.mocked(streamTranslationWithContext).mockImplementationOnce(async function* () {
-      yield {
-        fields: { translation: 'close' } as Record<string, string>,
-        activeFieldId: 'translation',
-        rawText: '<translation>close',
-        done: false,
-      };
-      await new Promise<void>((resolve) => {
-        releaseFinalChunk = resolve;
-      });
-      yield {
-        fields: { translation: 'close friend', contextualMeaning: 'trusted companion' } as Record<
-          string,
-          string
-        >,
-        activeFieldId: null,
-        rawText:
-          '<translation>close friend</translation><contextualMeaning>trusted companion</contextualMeaning>',
-        done: true,
-      };
-    });
-
+  test('shared lookup returns the final result without legacy streaming updates', async () => {
     const { result } = renderHook(() => useContextTranslation(defaultProps));
 
-    await waitFor(() => expect(result.current.partialResult?.['translation']).toBe('close'));
-    expect(result.current.loading).toBe(false);
-    (releaseFinalChunk as (() => void) | null)?.();
     await waitFor(() => expect(result.current.result?.['translation']).toBe('close friend'));
+    expect(result.current.partialResult).toBeNull();
     expect(result.current.activeFieldId).toBeNull();
-  });
-
-  test('publishes retrieval status, hints, and popup context', async () => {
-    const { result } = renderHook(() => useContextTranslation(defaultProps));
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.retrievalStatus).toBe('cross-volume');
-    expect(result.current.retrievalHints).toEqual(popupContextBundle.retrievalHints);
-    expect(result.current.popupContext).toEqual(popupContextBundle);
+    expect(result.current.streaming).toBe(false);
   });
 });
