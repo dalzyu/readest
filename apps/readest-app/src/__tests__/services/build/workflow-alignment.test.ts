@@ -40,6 +40,19 @@ describe('workflow alignment', () => {
     expect(packageJson.scripts['build-macos-universal']).toContain('universal-apple-darwin');
   });
 
+  test('fork release workflow uses unsigned local packaging instead of release uploads', () => {
+    expect(releaseWorkflow).toContain("if: matrix.config.release == 'android' && github.repository != 'readest/readest'");
+    expect(releaseWorkflow).toContain("if: matrix.config.release != 'android' && github.repository != 'readest/readest'");
+    expect(releaseWorkflow).toContain("if: matrix.config.release != 'android' && github.repository == 'readest/readest'");
+    expect(releaseWorkflow).toContain("if: github.repository == 'readest/readest'");
+  });
+
+  test('armhf release builds include the io-uring arch workaround', () => {
+    expect(releaseWorkflow).toContain(
+      "echo 'CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS=--cfg=io_uring_skip_arch_check' >> $GITHUB_ENV",
+    );
+  });
+
   test('tauri hooks use the same package-manager entrypoint as local builds', () => {
     expect(tauriConfig.build.beforeDevCommand).toBe('corepack pnpm dev');
     expect(tauriConfig.build.beforeBuildCommand).toBe('corepack pnpm build');

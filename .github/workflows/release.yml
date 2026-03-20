@@ -208,6 +208,7 @@ jobs:
           echo 'PKG_CONFIG_PATH=/usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig' >> $GITHUB_ENV
           echo 'PKG_CONFIG_SYSROOT_DIR=/usr/arm-linux-gnueabihf' >> $GITHUB_ENV
           echo 'CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_LINKER=arm-linux-gnueabihf-gcc' >> $GITHUB_ENV
+          echo 'CARGO_TARGET_ARM_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS=--cfg=io_uring_skip_arch_check' >> $GITHUB_ENV
 
       - name: create .env.local file for Next.js
         run: |
@@ -218,8 +219,28 @@ jobs:
           echo "NEXT_PUBLIC_APP_PLATFORM=tauri" >> .env.local
           cp .env.local apps/readest-app/.env.local
 
+      - name: build Android apk (fork only)
+        if: matrix.config.release == 'android' && github.repository != 'readest/readest'
+        env:
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+        working-directory: apps/readest-app
+        run: |
+          rm -rf src-tauri/gen/android
+          pnpm tauri android init
+          pnpm tauri icon ../../data/icons/readest-book.png
+          git checkout .
+          pnpm tauri android build --debug
+
+      - name: upload Android apk artifact (fork only)
+        if: matrix.config.release == 'android' && github.repository != 'readest/readest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apks
+          path: apps/readest-app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
       - name: build and upload Android apks
-        if: matrix.config.release == 'android'
+        if: matrix.config.release == 'android' && github.repository == 'readest/readest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
@@ -259,7 +280,7 @@ jobs:
           gh release upload ${{ needs.get-release.outputs.release_tag }} $arm64_apk.sig --clobber
 
       - name: download and update latest.json for Android release
-        if: matrix.config.release == 'android'
+        if: matrix.config.release == 'android' && github.repository == 'readest/readest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -288,8 +309,24 @@ jobs:
         if: matrix.config.release == 'linux'
         run: cargo install tauri-cli --git https://github.com/tauri-apps/tauri --branch feat/truly-portable-appimage --force
 
+      - name: build desktop bundles (fork only)
+        if: matrix.config.release != 'android' && github.repository != 'readest/readest'
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+          TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: 'true'
+        working-directory: apps/readest-app
+        run: pnpm tauri build ${{ matrix.config.args || '' }}
+
+      - name: upload desktop bundle artifact (fork only)
+        if: matrix.config.release != 'android' && github.repository != 'readest/readest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.config.release }}-${{ matrix.config.arch }}
+          path: target/**/release/bundle/**/*
+          if-no-files-found: error
+
       - uses: tauri-apps/tauri-action@v0
-        if: matrix.config.release != 'android'
+        if: matrix.config.release != 'android' && github.repository == 'readest/readest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_BUNDLER_NEW_APPIMAGE_FORMAT: 'true'
@@ -309,6 +346,7 @@ jobs:
           args: ${{ matrix.config.args || '' }}
 
       - name: upload release notes to GitHub release
+        if: github.repository == 'readest/readest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -316,7 +354,7 @@ jobs:
           gh release upload ${{ needs.get-release.outputs.release_tag }} apps/readest-app/release-notes.json --clobber
 
       - name: build and upload portable binaries (Windows only)
-        if: matrix.config.os == 'windows-latest'
+        if: matrix.config.os == 'windows-latest' && github.repository == 'readest/readest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -361,7 +399,7 @@ jobs:
           gh release upload ${{ needs.get-release.outputs.release_tag }} $bin_file.sig --clobber
 
       - name: download and update latest.json for Windows portable release
-        if: matrix.config.os == 'windows-latest'
+        if: matrix.config.os == 'windows-latest' && github.repository == 'readest/readest'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -394,6 +432,7 @@ jobs:
           gh release upload ${{ needs.get-release.outputs.release_tag }} latest.json --clobber
 
   upload-to-r2:
+    if: github.repository == 'readest/readest'
     needs: [get-release, build-tauri]
     uses: ./.github/workflows/upload-to-r2.yml
     with:
