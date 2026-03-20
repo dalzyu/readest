@@ -1,8 +1,14 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import ContextDictionaryPopup from '@/app/reader/components/annotator/ContextDictionaryPopup';
-import type { ContextTranslationSettings } from '@/services/contextTranslation/types';
-import { DEFAULT_CONTEXT_TRANSLATION_SETTINGS } from '@/services/contextTranslation/defaults';
+import type {
+  ContextDictionarySettings,
+  ContextTranslationSettings,
+} from '@/services/contextTranslation/types';
+import {
+  DEFAULT_CONTEXT_DICTIONARY_SETTINGS,
+  DEFAULT_CONTEXT_TRANSLATION_SETTINGS,
+} from '@/services/contextTranslation/defaults';
 
 vi.mock('@/components/Popup', () => ({
   default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -17,14 +23,16 @@ vi.mock('@/hooks/useContextDictionary', () => ({
   useContextDictionary: (...args: unknown[]) => mockUseContextDictionary(...args),
 }));
 
-const settings: ContextTranslationSettings = DEFAULT_CONTEXT_TRANSLATION_SETTINGS;
+const translationSettings: ContextTranslationSettings = DEFAULT_CONTEXT_TRANSLATION_SETTINGS;
+const dictionarySettings: ContextDictionarySettings = DEFAULT_CONTEXT_DICTIONARY_SETTINGS;
 
 const defaultProps = {
   bookKey: 'book-1',
   bookHash: 'hash-1',
   selectedText: '知己',
   currentPage: 1,
-  settings,
+  translationSettings,
+  dictionarySettings,
   position: { point: { x: 0, y: 0 } },
   trianglePosition: { point: { x: 0, y: 0 } },
   popupWidth: 400,
@@ -34,7 +42,7 @@ const defaultProps = {
 describe('ContextDictionaryPopup', () => {
   test('dictionary popup renders simplified source-language explanation fields', () => {
     mockUseContextDictionary.mockReturnValue({
-      result: { translation: 'simple definition' },
+      result: { simpleDefinition: 'simple definition', contextualMeaning: 'clear explanation' },
       partialResult: null,
       loading: false,
       streaming: false,
@@ -54,6 +62,7 @@ describe('ContextDictionaryPopup', () => {
 
     render(<ContextDictionaryPopup {...defaultProps} />);
     expect(screen.getByText('simple definition')).toBeTruthy();
+    expect(screen.getByText('clear explanation')).toBeTruthy();
   });
 
   test('shows loading state', () => {

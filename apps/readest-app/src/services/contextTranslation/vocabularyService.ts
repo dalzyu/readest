@@ -1,5 +1,6 @@
 import type { VocabularyEntry, TranslationResult, TranslationOutputField } from './types';
 import { VOCABULARY_SCHEMA_VERSION } from './types';
+import { upgradeSavedVocabularyEntry } from './vocabularyCompatibility';
 import { aiStore } from '@/services/ai/storage/aiStore';
 
 type NewEntry = Omit<VocabularyEntry, 'id' | 'addedAt' | 'reviewCount'> &
@@ -25,11 +26,13 @@ export async function saveVocabularyEntry(input: NewEntry): Promise<VocabularyEn
 }
 
 export async function getVocabularyForBook(bookHash: string): Promise<VocabularyEntry[]> {
-  return aiStore.getVocabularyByBook(bookHash);
+  const entries = await aiStore.getVocabularyByBook(bookHash);
+  return entries.map((entry) => upgradeSavedVocabularyEntry(entry));
 }
 
 export async function getAllVocabulary(): Promise<VocabularyEntry[]> {
-  return aiStore.getAllVocabulary();
+  const entries = await aiStore.getAllVocabulary();
+  return entries.map((entry) => upgradeSavedVocabularyEntry(entry));
 }
 
 export async function deleteVocabularyEntry(id: string): Promise<void> {
@@ -37,7 +40,8 @@ export async function deleteVocabularyEntry(id: string): Promise<void> {
 }
 
 export async function searchVocabulary(query: string): Promise<VocabularyEntry[]> {
-  return aiStore.searchVocabulary(query);
+  const entries = await aiStore.searchVocabulary(query);
+  return entries.map((entry) => upgradeSavedVocabularyEntry(entry));
 }
 
 /** Export entries as Anki-compatible TSV (tab-separated).

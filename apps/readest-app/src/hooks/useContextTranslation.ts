@@ -1,4 +1,6 @@
 import type {
+  LookupAnnotationSlots,
+  LookupExample,
   ContextTranslationSettings,
   PopupContextBundle,
   PopupRetrievalHints,
@@ -25,6 +27,8 @@ interface UseContextTranslationResult {
   retrievalStatus: RetrievalStatus;
   retrievalHints: PopupRetrievalHints;
   popupContext: PopupContextBundle | null;
+  examples: LookupExample[];
+  annotations: LookupAnnotationSlots | null;
   saveToVocabulary: () => Promise<void>;
 }
 
@@ -45,6 +49,8 @@ export function useContextTranslation({
     retrievalStatus,
     retrievalHints,
     popupContext,
+    examples,
+    annotations,
     saveToVocabulary,
   } = useContextLookup({
     mode: 'translation',
@@ -65,6 +71,8 @@ export function useContextTranslation({
     retrievalStatus,
     retrievalHints,
     popupContext,
+    examples,
+    annotations,
     saveToVocabulary,
   };
 }

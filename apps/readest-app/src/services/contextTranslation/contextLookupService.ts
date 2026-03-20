@@ -1,12 +1,23 @@
 import type { LanguageModel } from 'ai';
 import type { ContextLookupMode } from './modes';
-import type { TranslationOutputField, PopupContextBundle } from './types';
+import type {
+  ContextDictionarySettings,
+  LookupAnnotationSlots,
+  LookupExample,
+  TranslationOutputField,
+  PopupContextBundle,
+} from './types';
 import type { NormalizedLookupResult } from './normalizer';
 import type { DetectedLanguageInfo } from './languagePolicy';
 import type { ValidationDecision } from './validator';
 import { captureEvent } from '@/utils/telemetry';
 import { detectLookupLanguage } from './languagePolicy';
 import { resolveLookupPlugins } from './plugins/registry';
+import {
+  filterRenderableExamples,
+  formatTranslationResult,
+  parseStructuredExamples,
+} from './exampleFormatter';
 import { buildLookupPrompt } from './promptBuilder';
 import { buildRepairPrompt } from './repairPromptBuilder';
 import { callLLM } from './llmClient';
@@ -20,12 +31,15 @@ export interface ContextLookupRequest {
   targetLanguage: string;
   sourceLanguage?: string;
   outputFields: TranslationOutputField[];
+  dictionarySettings?: ContextDictionarySettings;
   model?: LanguageModel;
   abortSignal?: AbortSignal;
 }
 
 export interface ContextLookupResult {
   fields: NormalizedLookupResult;
+  examples: LookupExample[];
+  annotations: LookupAnnotationSlots;
   validationDecision: ValidationDecision;
   detectedLanguage: DetectedLanguageInfo;
 }
@@ -122,6 +136,11 @@ export async function runContextLookup(
   const detectedLanguage = detectLookupLanguage(request.selectedText);
   const sourceLanguage = request.sourceLanguage ?? detectedLanguage.language;
   const primaryField = resolvePrimaryField(request.outputFields);
+  const plugins = resolveLookupPlugins({
+    sourceLanguage,
+    targetLanguage: request.targetLanguage,
+    mode: request.mode,
+  });
 
   const { systemPrompt, userPrompt } = buildLookupPrompt({
     mode: request.mode,
@@ -130,11 +149,21 @@ export async function runContextLookup(
     targetLanguage: request.targetLanguage,
     sourceLanguage,
     outputFields: request.outputFields,
+    dictionarySettings: request.dictionarySettings,
   });
 
   const runAttempt = async (system: string, user: string) => {
     const raw = await callLLM(system, user, request.model as LanguageModel, request.abortSignal);
-    const fields = normalizeLookupResponse(raw, request.mode);
+    const normalized = normalizeLookupResponse(raw, request.mode);
+    const fields =
+      request.mode === 'translation'
+        ? formatTranslationResult(normalized, {
+            selectedText: request.selectedText,
+            sourceLanguage,
+            targetLanguage: request.targetLanguage,
+            outputFields: request.outputFields,
+          })
+        : normalized;
     const validation = validateLookupResult(fields, primaryField, request.selectedText);
 
     return { raw, fields, validation };
@@ -148,12 +177,14 @@ export async function runContextLookup(
     repairCount = 1;
 
     const repairPrompt = buildRepairPrompt({
+      originalSystemPrompt: systemPrompt,
       originalUserPrompt: userPrompt,
       issue: attempt.validation.reason ?? `${primaryField} field is empty or missing`,
     });
 
     attempt = await runAttempt(repairPrompt.systemPrompt, repairPrompt.userPrompt);
-    degradationPath = attempt.validation.decision === 'degrade' ? 'repair-failed' : 'repair-recovered';
+    degradationPath =
+      attempt.validation.decision === 'degrade' ? 'repair-failed' : 'repair-recovered';
   }
 
   contextLookupTelemetry.logOutcome(
@@ -170,8 +201,49 @@ export async function runContextLookup(
     }),
   );
 
+  const parsedExamples = attempt.fields['examples']
+    ? filterRenderableExamples(
+        parseStructuredExamples(attempt.fields['examples']),
+        request.selectedText,
+      )
+    : [];
+  const sourceAnnotations = plugins.source.enrichSourceAnnotations?.(
+    attempt.fields,
+    request.selectedText,
+  );
+  const targetAnnotations = plugins.target.enrichTargetAnnotations?.(
+    attempt.fields,
+    request.selectedText,
+  );
+  const sourceExampleAnnotations = plugins.source.enrichExampleAnnotations?.(
+    parsedExamples,
+    'source',
+  );
+  const targetExampleAnnotations = plugins.target.enrichExampleAnnotations?.(
+    parsedExamples,
+    'target',
+  );
+  const annotations: LookupAnnotationSlots = {
+    source:
+      sourceAnnotations || sourceExampleAnnotations
+        ? {
+            ...sourceAnnotations,
+            examples: sourceExampleAnnotations ?? sourceAnnotations?.examples,
+          }
+        : undefined,
+    target:
+      targetAnnotations || targetExampleAnnotations
+        ? {
+            ...targetAnnotations,
+            examples: targetExampleAnnotations ?? targetAnnotations?.examples,
+          }
+        : undefined,
+  };
+
   return {
     fields: attempt.fields,
+    examples: parsedExamples,
+    annotations,
     validationDecision: attempt.validation.decision,
     detectedLanguage,
   };

@@ -2,7 +2,10 @@ import React from 'react';
 import Popup from '@/components/Popup';
 import { useContextDictionary } from '@/hooks/useContextDictionary';
 import { useTranslation } from '@/hooks/useTranslation';
-import type { ContextTranslationSettings } from '@/services/contextTranslation/types';
+import type {
+  ContextDictionarySettings,
+  ContextTranslationSettings,
+} from '@/services/contextTranslation/types';
 import { Position } from '@/utils/sel';
 
 interface ContextDictionaryPopupProps {
@@ -10,7 +13,8 @@ interface ContextDictionaryPopupProps {
   bookHash: string;
   selectedText: string;
   currentPage: number;
-  settings: ContextTranslationSettings;
+  translationSettings: ContextTranslationSettings;
+  dictionarySettings: ContextDictionarySettings;
   position: Position;
   trianglePosition: Position;
   popupWidth: number;
@@ -23,7 +27,8 @@ const ContextDictionaryPopup: React.FC<ContextDictionaryPopupProps> = ({
   bookHash,
   selectedText,
   currentPage,
-  settings,
+  translationSettings,
+  dictionarySettings,
   position,
   trianglePosition,
   popupWidth,
@@ -36,10 +41,13 @@ const ContextDictionaryPopup: React.FC<ContextDictionaryPopupProps> = ({
     bookHash,
     selectedText,
     currentPage,
-    settings,
+    translationSettings,
+    dictionarySettings,
   });
 
-  const definition = result?.['translation'] ?? null;
+  const simpleDefinition = result?.['simpleDefinition'] ?? null;
+  const contextualMeaning = result?.['contextualMeaning'] ?? null;
+  const sourceExamples = result?.['sourceExamples'] ?? null;
 
   return (
     <div>
@@ -60,16 +68,36 @@ const ContextDictionaryPopup: React.FC<ContextDictionaryPopupProps> = ({
         <div className='flex flex-1 flex-col gap-3 overflow-y-auto p-4'>
           {loading && <p className='text-sm italic text-gray-400'>{_('Looking up...')}</p>}
           {error && <p className='text-sm text-red-400'>{error}</p>}
-          {!loading && !error && definition !== null && (
+          {!loading && !error && simpleDefinition !== null ? (
             <div>
               <h3 className='mb-1 text-xs font-medium uppercase tracking-wide text-gray-400'>
                 {_('Definition')}
               </h3>
               <p className='not-eink:text-white/90 select-text whitespace-pre-wrap text-sm leading-relaxed'>
-                {definition}
+                {simpleDefinition}
               </p>
             </div>
-          )}
+          ) : null}
+          {!loading && !error && contextualMeaning ? (
+            <div>
+              <h3 className='mb-1 text-xs font-medium uppercase tracking-wide text-gray-400'>
+                {_('Contextual Meaning')}
+              </h3>
+              <p className='not-eink:text-white/90 select-text whitespace-pre-wrap text-sm leading-relaxed'>
+                {contextualMeaning}
+              </p>
+            </div>
+          ) : null}
+          {!loading && !error && dictionarySettings.sourceExamples && sourceExamples ? (
+            <div>
+              <h3 className='mb-1 text-xs font-medium uppercase tracking-wide text-gray-400'>
+                {_('Examples')}
+              </h3>
+              <p className='not-eink:text-white/90 select-text whitespace-pre-wrap text-sm leading-relaxed'>
+                {sourceExamples}
+              </p>
+            </div>
+          ) : null}
         </div>
       </Popup>
     </div>

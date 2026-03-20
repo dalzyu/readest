@@ -11,6 +11,22 @@ export interface TranslationOutputField {
 /** The parsed result from the LLM, keyed by field id */
 export type TranslationResult = Record<string, string>;
 
+export interface LookupExample {
+  exampleId: string;
+  sourceText: string;
+  targetText: string;
+}
+
+export type LookupAnnotations = {
+  phonetic?: string;
+  examples?: Record<string, { phonetic?: string }>;
+};
+
+export type LookupAnnotationSlots = {
+  source?: LookupAnnotations;
+  target?: LookupAnnotations;
+};
+
 export type RetrievalStatus = 'local-only' | 'local-volume' | 'cross-volume';
 
 export interface TranslationStreamResult {

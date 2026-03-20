@@ -101,6 +101,9 @@ const AIPanel: React.FC = () => {
   const [ctxOutputFields, setCtxOutputFields] = useState(ctxTransSettings.outputFields);
 
   const [ctxDictEnabled, setCtxDictEnabled] = useState(ctxDictSettings.enabled);
+  const [ctxDictSourceExamples, setCtxDictSourceExamples] = useState(
+    ctxDictSettings.sourceExamples,
+  );
 
   const [enabled, setEnabled] = useState(aiSettings.enabled);
   const [provider, setProvider] = useState<AIProviderName>(aiSettings.provider);
@@ -1035,6 +1038,22 @@ const AIPanel: React.FC = () => {
                   const next = !ctxDictEnabled;
                   setCtxDictEnabled(next);
                   saveCtxDictSetting({ enabled: next });
+                }}
+              />
+            </div>
+            <div className='config-item'>
+              <label htmlFor='ctx-dict-source-examples-toggle'>
+                {_('Include Source Examples')}
+              </label>
+              <input
+                id='ctx-dict-source-examples-toggle'
+                type='checkbox'
+                className='toggle'
+                checked={ctxDictSourceExamples}
+                onChange={() => {
+                  const next = !ctxDictSourceExamples;
+                  setCtxDictSourceExamples(next);
+                  saveCtxDictSetting({ sourceExamples: next });
                 }}
               />
             </div>

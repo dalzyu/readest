@@ -1117,7 +1117,8 @@ const Annotator: React.FC<{ bookKey: string }> = ({ bookKey }) => {
             bookHash={bookData.book?.hash ?? ''}
             selectedText={selection.text}
             currentPage={progress.page}
-            settings={settings.globalReadSettings.contextTranslation}
+            translationSettings={settings.globalReadSettings.contextTranslation}
+            dictionarySettings={settings.globalReadSettings.contextDictionary}
             position={contextDictionaryPopupPosition}
             trianglePosition={trianglePosition}
             popupWidth={ctxDictPopupWidth}

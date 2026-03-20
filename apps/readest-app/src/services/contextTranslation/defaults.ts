@@ -1,4 +1,8 @@
-import type { ContextDictionarySettings, ContextTranslationSettings } from './types';
+import type {
+  ContextDictionarySettings,
+  ContextTranslationSettings,
+  TranslationOutputField,
+} from './types';
 export { CONTEXT_LOOKUP_MODES } from './modes';
 
 export const DEFAULT_CONTEXT_TRANSLATION_SETTINGS: ContextTranslationSettings = {
@@ -42,3 +46,34 @@ export const DEFAULT_CONTEXT_DICTIONARY_SETTINGS: ContextDictionarySettings = {
   enabled: false,
   sourceExamples: true,
 };
+
+export function getContextDictionaryOutputFields(
+  settings: ContextDictionarySettings,
+): TranslationOutputField[] {
+  return [
+    {
+      id: 'simpleDefinition',
+      label: 'Simple Definition',
+      enabled: true,
+      order: 0,
+      promptInstruction:
+        'Explain the selected text in simpler source-language terms without translating away from the source language.',
+    },
+    {
+      id: 'contextualMeaning',
+      label: 'Contextual Meaning',
+      enabled: true,
+      order: 1,
+      promptInstruction:
+        'Explain what the selected text means in this passage, still using the source language.',
+    },
+    {
+      id: 'sourceExamples',
+      label: 'Source Examples',
+      enabled: settings.sourceExamples,
+      order: 2,
+      promptInstruction:
+        'Provide 1 or 2 short example sentences in the source language that use the selected text naturally.',
+    },
+  ];
+}

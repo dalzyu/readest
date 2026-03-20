@@ -1,5 +1,5 @@
 import { pinyin } from 'pinyin-pro';
-import type { TranslationOutputField, TranslationResult } from './types';
+import type { LookupExample, TranslationOutputField, TranslationResult } from './types';
 import { classifyExampleMatch } from './exampleMatcher';
 
 type FormatRequest = {
@@ -13,6 +13,7 @@ const HAN_REGEX = /[\u3400-\u9fff]/u;
 const NUMBERED_EXAMPLE_REGEX = /^(\d+\.\s*)(.+)$/u;
 const ENGLISH_LINE_REGEX = /^English:\s*/iu;
 const PINYIN_LINE_REGEX = /^Pinyin:\s*/iu;
+const CHINESE_LINE_REGEX = /^Chinese:\s*/iu;
 
 function shouldFormatChineseExamples(request: FormatRequest, result: TranslationResult): boolean {
   return (
@@ -157,4 +158,55 @@ export function formatTranslationResult(
     ...result,
     examples: formatExamples(examples, request),
   };
+}
+
+function stripNumbering(value: string): string {
+  return value.replace(/^\d+\.\s*/, '').trim();
+}
+
+function stripLabel(value: string): string {
+  return value.replace(ENGLISH_LINE_REGEX, '').replace(CHINESE_LINE_REGEX, '').trim();
+}
+
+export function parseStructuredExamples(value: string): LookupExample[] {
+  return value
+    .split(/\n{2,}/)
+    .map((item) =>
+      item
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean),
+    )
+    .map((lines, index) => {
+      const [firstLine = ''] = lines;
+      const englishLine = lines.find((line) => ENGLISH_LINE_REGEX.test(line));
+      const chineseLine = lines.find((line) => CHINESE_LINE_REGEX.test(line));
+      const unlabeledTargetLine =
+        lines.find(
+          (line, lineIndex) =>
+            lineIndex > 0 &&
+            !PINYIN_LINE_REGEX.test(line) &&
+            !ENGLISH_LINE_REGEX.test(line) &&
+            !CHINESE_LINE_REGEX.test(line),
+        ) ?? '';
+      const targetText = stripLabel(englishLine ?? chineseLine ?? unlabeledTargetLine);
+
+      return {
+        exampleId: `example-${index + 1}`,
+        sourceText: stripNumbering(firstLine),
+        targetText,
+      };
+    })
+    .filter((example) => example.sourceText.length > 0 && example.targetText.length > 0);
+}
+
+export function filterRenderableExamples(
+  examples: LookupExample[],
+  selectedText: string,
+): LookupExample[] {
+  return examples.filter(
+    (example) =>
+      classifyExampleMatch(example.sourceText, selectedText).kind !== 'none' ||
+      classifyExampleMatch(example.targetText, selectedText).kind !== 'none',
+  );
 }

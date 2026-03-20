@@ -1,14 +1,4 @@
-export type LookupAnnotations = {
-  // e.g. pinyin for zh source, stress marks for en
-  phonetic?: string;
-  // keyed by exampleId
-  examples?: Record<string, { phonetic?: string }>;
-};
-
-export type LookupAnnotationSlots = {
-  source?: LookupAnnotations;
-  target?: LookupAnnotations;
-};
+import type { LookupAnnotations, LookupExample } from '../types';
 
 export interface LookupPlugin {
   /** The normalized language this plugin handles (e.g. 'zh', 'en', 'fallback') */
@@ -23,4 +13,8 @@ export interface LookupPlugin {
     fields: Record<string, string>,
     selectedText: string,
   ) => LookupAnnotations | undefined;
+  enrichExampleAnnotations?: (
+    examples: LookupExample[],
+    slot: 'source' | 'target',
+  ) => LookupAnnotations['examples'] | undefined;
 }

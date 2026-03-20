@@ -1,7 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import type { VocabularyEntry } from '@/services/contextTranslation/types';
 
-// Mock aiStore so tests don't touch IndexedDB
 vi.mock('@/services/ai/storage/aiStore', () => ({
   aiStore: {
     saveVocabularyEntry: vi.fn(),
@@ -20,14 +19,15 @@ import {
   deleteVocabularyEntry,
   searchVocabulary,
 } from '@/services/contextTranslation/vocabularyService';
+import { VOCABULARY_SCHEMA_VERSION } from '@/services/contextTranslation/types';
 
 const mockStore = vi.mocked(aiStore);
 
 const sampleEntry: VocabularyEntry = {
   id: 'abc-123',
   bookHash: 'book-xyz',
-  term: '知己',
-  context: 'He finally found a true 知己 among his companions.',
+  term: 'zhiji',
+  context: 'He finally found a true confidant among his companions.',
   result: { translation: 'close friend', contextualMeaning: 'A soulmate who understands you.' },
   addedAt: 1700000000000,
   reviewCount: 0,
@@ -43,7 +43,7 @@ describe('saveVocabularyEntry', () => {
 
     const saved = await saveVocabularyEntry({
       bookHash: 'book-xyz',
-      term: '知己',
+      term: 'zhiji',
       context: 'some context',
       result: { translation: 'close friend' },
     });
@@ -53,7 +53,7 @@ describe('saveVocabularyEntry', () => {
     expect(arg.id).toBeTruthy();
     expect(arg.addedAt).toBeGreaterThan(0);
     expect(arg.reviewCount).toBe(0);
-    expect(arg.term).toBe('知己');
+    expect(arg.term).toBe('zhiji');
     expect(saved.id).toBe(arg.id);
   });
 
@@ -69,14 +69,16 @@ describe('saveVocabularyEntry', () => {
 });
 
 describe('getVocabularyForBook', () => {
-  test('returns entries for the given book hash', async () => {
-    mockStore.getVocabularyByBook.mockResolvedValueOnce([sampleEntry]);
+  test('returns upgraded entries for the given book hash', async () => {
+    mockStore.getVocabularyByBook.mockResolvedValueOnce([{ ...sampleEntry, mode: undefined }]);
 
     const result = await getVocabularyForBook('book-xyz');
 
     expect(mockStore.getVocabularyByBook).toHaveBeenCalledWith('book-xyz');
     expect(result).toHaveLength(1);
-    expect(result[0]!.term).toBe('知己');
+    expect(result[0]!.term).toBe('zhiji');
+    expect(result[0]!.mode).toBe('translation');
+    expect(result[0]!.schemaVersion).toBe(VOCABULARY_SCHEMA_VERSION);
   });
 
   test('returns empty array when book has no entries', async () => {
@@ -105,12 +107,12 @@ describe('deleteVocabularyEntry', () => {
 });
 
 describe('searchVocabulary', () => {
-  test('returns entries whose term contains the query (case-insensitive)', async () => {
+  test('returns entries whose term contains the query', async () => {
     mockStore.searchVocabulary.mockResolvedValueOnce([sampleEntry]);
 
-    const result = await searchVocabulary('知己');
-    expect(mockStore.searchVocabulary).toHaveBeenCalledWith('知己');
-    expect(result[0]!.term).toBe('知己');
+    const result = await searchVocabulary('zhi');
+    expect(mockStore.searchVocabulary).toHaveBeenCalledWith('zhi');
+    expect(result[0]!.term).toBe('zhiji');
   });
 });
 
@@ -120,11 +122,11 @@ describe('saveVocabularyEntry with examples', () => {
 
     const structuredEntry = {
       bookHash: 'book-xyz',
-      term: '知己',
-      context: 'He found a true 知己.',
+      term: 'zhiji',
+      context: 'He found a true confidant.',
       result: { translation: 'close friend' },
       mode: 'translation' as const,
-      examples: [{ exampleId: 'ex-abc', text: '他终于找到了知己。' }],
+      examples: [{ exampleId: 'ex-abc', text: 'He found a true confidant.' }],
     };
 
     const entry = await saveVocabularyEntry(structuredEntry);

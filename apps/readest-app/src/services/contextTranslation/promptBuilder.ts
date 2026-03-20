@@ -1,5 +1,6 @@
 import type { ContextLookupMode } from './modes';
-import type { TranslationRequest } from './types';
+import type { ContextDictionarySettings, TranslationRequest } from './types';
+import { DEFAULT_CONTEXT_DICTIONARY_SETTINGS, getContextDictionaryOutputFields } from './defaults';
 import { getTranslatorLanguageLabel } from '@/services/translatorLanguages';
 
 function languageName(code: string): string {
@@ -12,6 +13,23 @@ function isChineseSource(request: TranslationRequest): boolean {
 
 function isChineseTarget(request: TranslationRequest): boolean {
   return request.targetLanguage === 'zh';
+}
+
+function buildContextSections(request: TranslationRequest): string {
+  return [
+    `<local_past_context>${request.popupContext.localPastContext}</local_past_context>`,
+    request.popupContext.localFutureBuffer
+      ? `<local_future_buffer>${request.popupContext.localFutureBuffer}</local_future_buffer>`
+      : '',
+    request.popupContext.sameBookChunks.length > 0
+      ? `<same_book_memory>${request.popupContext.sameBookChunks.join('\n\n')}</same_book_memory>`
+      : '',
+    request.popupContext.priorVolumeChunks.length > 0
+      ? `<prior_volume_memory>${request.popupContext.priorVolumeChunks.join('\n\n')}</prior_volume_memory>`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 export function buildTranslationPrompt(request: TranslationRequest): {
@@ -40,10 +58,10 @@ export function buildTranslationPrompt(request: TranslationRequest): {
       ? `
 
 If <examples> is requested, each numbered example must use this exact layout:
-1. \u4e2d\u6587\u53e5\u5b50
+1. 中文句子
 English: ...
 
-2. \u4e2d\u6587\u53e5\u5b50
+2. 中文句子
 English: ...
 
 Do not include pinyin. The application will generate it separately.
@@ -53,10 +71,10 @@ Do not include pinyin. The application will generate it separately.
 
 If <examples> is requested, each numbered example must use this exact layout:
 1. English sentence
-Chinese: \u4e2d\u6587\u53e5\u5b50
+Chinese: 中文句子
 
 2. English sentence
-Chinese: \u4e2d\u6587\u53e5\u5b50
+Chinese: 中文句子
 
 Do not include pinyin. The application will generate it separately.
 `
@@ -72,45 +90,68 @@ ${fieldInstructions}
 Emit fields in this exact order: ${orderedFieldIds}.
 Respond with ONLY the tagged fields. Do not add any preamble or extra commentary outside the tags.${examplesLayoutInstruction}`;
 
-  const contextSections = [
-    `<local_past_context>${request.popupContext.localPastContext}</local_past_context>`,
-    request.popupContext.localFutureBuffer
-      ? `<local_future_buffer>${request.popupContext.localFutureBuffer}</local_future_buffer>`
-      : '',
-    request.popupContext.sameBookChunks.length > 0
-      ? `<same_book_memory>${request.popupContext.sameBookChunks.join('\n\n')}</same_book_memory>`
-      : '',
-    request.popupContext.priorVolumeChunks.length > 0
-      ? `<prior_volume_memory>${request.popupContext.priorVolumeChunks.join('\n\n')}</prior_volume_memory>`
-      : '',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
-
   const userPrompt = `<selected_text>${request.selectedText}</selected_text>
 
-${contextSections}
+${buildContextSections(request)}
 
 Please translate and explain the selected text using the context provided.`;
 
   return { systemPrompt, userPrompt };
 }
 
-type LookupPromptRequest = TranslationRequest & { mode: ContextLookupMode };
+type LookupPromptRequest = TranslationRequest & {
+  mode: ContextLookupMode;
+  dictionarySettings?: ContextDictionarySettings;
+};
 
-/**
- * Builds a prompt that instructs the LLM to emit all fields wrapped in a
- * final <lookup_json>…</lookup_json> sentinel block for authoritative parsing.
- * Translation-mode partial streaming may use XML tags during streaming; the
- * sentinel block is the canonical final response.
- */
+function buildDictionaryPrompt(request: LookupPromptRequest): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const dictionarySettings = request.dictionarySettings ?? DEFAULT_CONTEXT_DICTIONARY_SETTINGS;
+  const enabledFields = getContextDictionaryOutputFields(dictionarySettings)
+    .filter((field) => field.enabled)
+    .sort((a, b) => a.order - b.order);
+  const sourceLanguage = request.sourceLanguage ?? 'the source language';
+  const orderedFieldIds = enabledFields.map((field) => field.id).join(', ');
+
+  const fieldInstructions = enabledFields
+    .map(
+      (field) =>
+        `- <${field.id}>: ${field.promptInstruction} Wrap your answer in <${field.id}>...</${field.id}> tags.`,
+    )
+    .join('\n');
+
+  const systemPrompt = `You are a literary dictionary assistant.
+Explain the selected text in simpler terms using only the source language.
+The source language is ${sourceLanguage}. Do not translate the primary explanation into another language.
+
+Provide the following fields:
+${fieldInstructions}
+
+Emit fields in this exact order: ${orderedFieldIds}.
+Respond with ONLY the tagged fields. Do not add any preamble or extra commentary outside the tags.`;
+
+  const userPrompt = `<selected_text>${request.selectedText}</selected_text>
+
+${buildContextSections(request)}
+
+Please explain the selected text in simpler source-language terms using the context provided.`;
+
+  return { systemPrompt, userPrompt };
+}
+
 export function buildLookupPrompt(request: LookupPromptRequest): {
   systemPrompt: string;
   userPrompt: string;
 } {
-  const { systemPrompt, userPrompt } = buildTranslationPrompt(request);
+  const { systemPrompt, userPrompt } =
+    request.mode === 'dictionary'
+      ? buildDictionaryPrompt(request)
+      : buildTranslationPrompt(request);
 
-  const sentinelInstruction = `\n\nAfter all tagged fields, emit a final JSON summary wrapped in <lookup_json> and </lookup_json> tags containing all field values as a JSON object. Example:\n<lookup_json>{"translation":"…","contextualMeaning":"…"}</lookup_json>`;
+  const sentinelInstruction =
+    '\n\nAfter all tagged fields, emit a final JSON summary wrapped in <lookup_json> and </lookup_json> tags containing all field values as a JSON object.';
 
   return {
     systemPrompt: systemPrompt + sentinelInstruction,

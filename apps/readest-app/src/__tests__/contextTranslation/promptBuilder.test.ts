@@ -22,7 +22,7 @@ const baseFields: TranslationOutputField[] = [
     label: 'Contextual Meaning',
     enabled: true,
     order: 1,
-    promptInstruction: 'Explain what the word/phrase means given the surrounding context.',
+    promptInstruction: 'Explain what the word or phrase means in context.',
   },
   {
     id: 'examples',
@@ -34,11 +34,11 @@ const baseFields: TranslationOutputField[] = [
 ];
 
 const baseRequest: TranslationRequest = {
-  selectedText: '知己',
+  selectedText: 'zhiji',
   popupContext: {
-    localPastContext: 'He had finally found a true 知己 among his companions.',
+    localPastContext: 'He had finally found a true confidant among his companions.',
     localFutureBuffer: 'The next few words clarify the tone.',
-    sameBookChunks: ['Earlier in the novel, 知己 described a sworn confidant.'],
+    sameBookChunks: ['Earlier in the novel, the term described a sworn confidant.'],
     priorVolumeChunks: ['In volume 1, the term appeared during a reunion scene.'],
     retrievalStatus: 'cross-volume',
     retrievalHints: {
@@ -55,12 +55,12 @@ const baseRequest: TranslationRequest = {
 describe('buildTranslationPrompt', () => {
   test('includes selected text in prompt', () => {
     const { userPrompt } = buildTranslationPrompt(baseRequest);
-    expect(userPrompt).toContain('知己');
+    expect(userPrompt).toContain('zhiji');
   });
 
   test('includes recent local context in prompt', () => {
     const { userPrompt } = buildTranslationPrompt(baseRequest);
-    expect(userPrompt).toContain('He had finally found a true 知己');
+    expect(userPrompt).toContain('true confidant');
   });
 
   test('includes target language in system prompt', () => {
@@ -72,16 +72,16 @@ describe('buildTranslationPrompt', () => {
     const { systemPrompt } = buildTranslationPrompt(baseRequest);
     expect(systemPrompt).toContain('translation');
     expect(systemPrompt).toContain('contextualMeaning');
-    expect(systemPrompt).not.toContain('examples');
+    expect(systemPrompt).not.toContain('<examples>');
   });
 
   test('includes prompt instructions for enabled fields', () => {
     const { systemPrompt } = buildTranslationPrompt(baseRequest);
     expect(systemPrompt).toContain('Provide a direct translation');
-    expect(systemPrompt).toContain('Explain what the word/phrase means');
+    expect(systemPrompt).toContain('Explain what the word or phrase means');
   });
 
-  test('instructs LLM to use XML tags for each enabled field', () => {
+  test('instructs the LLM to use XML tags for each enabled field', () => {
     const { systemPrompt } = buildTranslationPrompt(baseRequest);
     expect(systemPrompt).toContain('<translation>');
     expect(systemPrompt).toContain('<contextualMeaning>');
@@ -128,7 +128,7 @@ describe('buildTranslationPrompt', () => {
           label: 'Contextual Meaning',
           enabled: true,
           order: 0,
-          promptInstruction: 'Explain what the word/phrase means given the surrounding context.',
+          promptInstruction: 'Explain what the word or phrase means in context.',
         },
         {
           id: 'translation',
@@ -145,53 +145,6 @@ describe('buildTranslationPrompt', () => {
     expect(systemPrompt).toContain('Emit fields in this exact order');
     expect(systemPrompt).toContain('contextualMeaning, translation');
   });
-
-  test('requires chinese examples to include chinese and english without asking ai for pinyin', () => {
-    const request: TranslationRequest = {
-      ...baseRequest,
-      sourceLanguage: 'zh',
-      outputFields: [
-        ...baseFields.slice(0, 2),
-        {
-          id: 'examples',
-          label: 'Examples',
-          enabled: true,
-          order: 2,
-          promptInstruction: 'Give usage examples.',
-        },
-      ],
-    };
-
-    const { systemPrompt } = buildTranslationPrompt(request);
-
-    expect(systemPrompt).not.toContain('Pinyin:');
-    expect(systemPrompt).toContain('English:');
-    expect(systemPrompt).toContain('1. 中文句子');
-  });
-  test('requires english-to-chinese examples to use english source lines and chinese translation lines without pinyin', () => {
-    const request: TranslationRequest = {
-      ...baseRequest,
-      selectedText: 'Grunnings',
-      sourceLanguage: 'en',
-      targetLanguage: 'zh',
-      outputFields: [
-        ...baseFields.slice(0, 2),
-        {
-          id: 'examples',
-          label: 'Examples',
-          enabled: true,
-          order: 2,
-          promptInstruction: 'Give usage examples.',
-        },
-      ],
-    };
-
-    const { systemPrompt } = buildTranslationPrompt(request);
-
-    expect(systemPrompt).not.toContain('Pinyin:');
-    expect(systemPrompt).toContain('1. English sentence');
-    expect(systemPrompt).toContain('Chinese: 中文句子');
-  });
 });
 
 describe('buildLookupPrompt', () => {
@@ -202,6 +155,19 @@ describe('buildLookupPrompt', () => {
 
   test('preserves field instructions in lookup prompt', () => {
     const { userPrompt } = buildLookupPrompt({ mode: 'translation', ...baseRequest });
-    expect(userPrompt).toContain('知己');
+    expect(userPrompt).toContain('zhiji');
+  });
+
+  test('dictionary prompt requests source-language simplification fields', () => {
+    const { systemPrompt } = buildLookupPrompt({
+      mode: 'dictionary',
+      ...baseRequest,
+      targetLanguage: 'fr',
+    });
+
+    expect(systemPrompt).toContain('source language');
+    expect(systemPrompt).toContain('<simpleDefinition>');
+    expect(systemPrompt).toContain('<contextualMeaning>');
+    expect(systemPrompt).not.toContain('Always respond in French');
   });
 });
