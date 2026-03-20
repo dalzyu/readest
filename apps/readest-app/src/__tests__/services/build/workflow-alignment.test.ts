@@ -43,6 +43,9 @@ describe('workflow alignment', () => {
   test('fork release workflow uses unsigned local packaging instead of release uploads', () => {
     expect(releaseWorkflow).toContain("if: matrix.config.release == 'android' && github.repository != 'readest/readest'");
     expect(releaseWorkflow).toContain("if: matrix.config.release != 'android' && github.repository != 'readest/readest'");
+    expect(releaseWorkflow).toContain("name: upload Android apks to GitHub release (fork only)");
+    expect(releaseWorkflow).toContain("name: upload desktop bundles to GitHub release (fork only)");
+    expect(releaseWorkflow).toContain("gh release upload ${{ needs.get-release.outputs.release_tag }} \"$asset\" --clobber");
     expect(releaseWorkflow).toContain("if: matrix.config.release != 'android' && github.repository == 'readest/readest'");
     expect(releaseWorkflow).toContain("if: github.repository == 'readest/readest'");
   });

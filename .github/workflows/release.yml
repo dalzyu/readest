@@ -257,6 +257,24 @@ jobs:
           path: apps/readest-app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
 
+      - name: upload Android apks to GitHub release (fork only)
+        if: matrix.config.release == 'android' && github.repository != 'readest/readest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          assets=(apps/readest-app/src-tauri/gen/android/app/build/outputs/apk/**/*.apk)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No Android APKs found to upload"
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            [ -f "$asset" ] || continue
+            echo "Uploading $asset to GitHub release"
+            gh release upload ${{ needs.get-release.outputs.release_tag }} "$asset" --clobber
+          done
+
       - name: build and upload Android apks
         if: matrix.config.release == 'android' && github.repository == 'readest/readest'
         env:
@@ -342,6 +360,26 @@ jobs:
           name: ${{ matrix.config.release }}-${{ matrix.config.arch }}
           path: target/**/release/bundle/**/*
           if-no-files-found: error
+
+      - name: upload desktop bundles to GitHub release (fork only)
+        if: matrix.config.release != 'android' && github.repository != 'readest/readest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          shopt -s globstar nullglob
+          assets=(target/**/release/bundle/**/*)
+          uploaded=0
+          for asset in "${assets[@]}"; do
+            [ -f "$asset" ] || continue
+            echo "Uploading $asset to GitHub release"
+            gh release upload ${{ needs.get-release.outputs.release_tag }} "$asset" --clobber
+            uploaded=1
+          done
+          if [ "$uploaded" -ne 1 ]; then
+            echo "No desktop bundle files found to upload"
+            exit 1
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         if: matrix.config.release != 'android' && github.repository == 'readest/readest'
