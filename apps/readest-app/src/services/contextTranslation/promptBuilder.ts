@@ -1,3 +1,4 @@
+import type { ContextLookupMode } from './modes';
 import type { TranslationRequest } from './types';
 import { getTranslatorLanguageLabel } from '@/services/translatorLanguages';
 
@@ -7,6 +8,10 @@ function languageName(code: string): string {
 
 function isChineseSource(request: TranslationRequest): boolean {
   return request.sourceLanguage === 'zh' || /[\u3400-\u9fff]/u.test(request.selectedText);
+}
+
+function isChineseTarget(request: TranslationRequest): boolean {
+  return request.targetLanguage === 'zh';
 }
 
 export function buildTranslationPrompt(request: TranslationRequest): {
@@ -30,8 +35,8 @@ export function buildTranslationPrompt(request: TranslationRequest): {
     )
     .join('\n');
 
-  const chineseExamplesInstruction =
-    isChineseSource(request) && enabledFields.some((field) => field.id === 'examples')
+  const examplesLayoutInstruction = enabledFields.some((field) => field.id === 'examples')
+    ? isChineseSource(request)
       ? `
 
 If <examples> is requested, each numbered example must use this exact layout:
@@ -43,7 +48,20 @@ English: ...
 
 Do not include pinyin. The application will generate it separately.
 `
-      : '';
+      : isChineseTarget(request)
+        ? `
+
+If <examples> is requested, each numbered example must use this exact layout:
+1. English sentence
+Chinese: \u4e2d\u6587\u53e5\u5b50
+
+2. English sentence
+Chinese: \u4e2d\u6587\u53e5\u5b50
+
+Do not include pinyin. The application will generate it separately.
+`
+        : ''
+    : '';
 
   const systemPrompt = `You are a literary translation assistant. Translate and explain text for a reader learning a foreign language.${sourceLangHint}
 
@@ -52,7 +70,7 @@ Always respond in ${targetLang}. For each request, provide the following fields,
 ${fieldInstructions}
 
 Emit fields in this exact order: ${orderedFieldIds}.
-Respond with ONLY the tagged fields. Do not add any preamble or extra commentary outside the tags.${chineseExamplesInstruction}`;
+Respond with ONLY the tagged fields. Do not add any preamble or extra commentary outside the tags.${examplesLayoutInstruction}`;
 
   const contextSections = [
     `<local_past_context>${request.popupContext.localPastContext}</local_past_context>`,
@@ -76,4 +94,26 @@ ${contextSections}
 Please translate and explain the selected text using the context provided.`;
 
   return { systemPrompt, userPrompt };
+}
+
+type LookupPromptRequest = TranslationRequest & { mode: ContextLookupMode };
+
+/**
+ * Builds a prompt that instructs the LLM to emit all fields wrapped in a
+ * final <lookup_json>…</lookup_json> sentinel block for authoritative parsing.
+ * Translation-mode partial streaming may use XML tags during streaming; the
+ * sentinel block is the canonical final response.
+ */
+export function buildLookupPrompt(request: LookupPromptRequest): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
+  const { systemPrompt, userPrompt } = buildTranslationPrompt(request);
+
+  const sentinelInstruction = `\n\nAfter all tagged fields, emit a final JSON summary wrapped in <lookup_json> and </lookup_json> tags containing all field values as a JSON object. Example:\n<lookup_json>{"translation":"…","contextualMeaning":"…"}</lookup_json>`;
+
+  return {
+    systemPrompt: systemPrompt + sentinelInstruction,
+    userPrompt,
+  };
 }

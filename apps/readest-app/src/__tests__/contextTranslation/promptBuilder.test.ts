@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest';
 
-import { buildTranslationPrompt } from '@/services/contextTranslation/promptBuilder';
-import type { TranslationOutputField, TranslationRequest } from '@/services/contextTranslation/types';
+import {
+  buildTranslationPrompt,
+  buildLookupPrompt,
+} from '@/services/contextTranslation/promptBuilder';
+import type {
+  TranslationOutputField,
+  TranslationRequest,
+} from '@/services/contextTranslation/types';
 
 const baseFields: TranslationOutputField[] = [
   {
@@ -161,5 +167,41 @@ describe('buildTranslationPrompt', () => {
     expect(systemPrompt).not.toContain('Pinyin:');
     expect(systemPrompt).toContain('English:');
     expect(systemPrompt).toContain('1. 中文句子');
+  });
+  test('requires english-to-chinese examples to use english source lines and chinese translation lines without pinyin', () => {
+    const request: TranslationRequest = {
+      ...baseRequest,
+      selectedText: 'Grunnings',
+      sourceLanguage: 'en',
+      targetLanguage: 'zh',
+      outputFields: [
+        ...baseFields.slice(0, 2),
+        {
+          id: 'examples',
+          label: 'Examples',
+          enabled: true,
+          order: 2,
+          promptInstruction: 'Give usage examples.',
+        },
+      ],
+    };
+
+    const { systemPrompt } = buildTranslationPrompt(request);
+
+    expect(systemPrompt).not.toContain('Pinyin:');
+    expect(systemPrompt).toContain('1. English sentence');
+    expect(systemPrompt).toContain('Chinese: 中文句子');
+  });
+});
+
+describe('buildLookupPrompt', () => {
+  test('translation prompt requires final sentinel-wrapped JSON output', () => {
+    const { systemPrompt } = buildLookupPrompt({ mode: 'translation', ...baseRequest });
+    expect(systemPrompt).toContain('<lookup_json>');
+  });
+
+  test('preserves field instructions in lookup prompt', () => {
+    const { userPrompt } = buildLookupPrompt({ mode: 'translation', ...baseRequest });
+    expect(userPrompt).toContain('知己');
   });
 });
