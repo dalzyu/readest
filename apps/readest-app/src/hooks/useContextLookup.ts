@@ -4,6 +4,7 @@ import { DEFAULT_AI_SETTINGS } from '@/services/ai/constants';
 import { getAIProvider } from '@/services/ai/providers';
 import { buildPopupContextBundle } from '@/services/contextTranslation/popupRetrievalService';
 import { streamTranslationWithContext } from '@/services/contextTranslation/translationService';
+import { runContextLookup } from '@/services/contextTranslation/contextLookupService';
 import type {
   ContextTranslationSettings,
   PopupContextBundle,
@@ -137,8 +138,22 @@ export function useContextLookup({
             }
           }
         } else {
-          // dictionary mode (v1): no streaming, could call runContextLookup in the future
-          // For now just mark as not loading
+          // dictionary mode: call runContextLookup (non-streaming)
+          const model = getAIProvider(requestSnapshot.aiSettings).getModel();
+          const lookupResult = await runContextLookup({
+            mode: 'dictionary',
+            selectedText,
+            popupContext: bundle,
+            targetLanguage: requestSnapshot.settings.targetLanguage,
+            outputFields: requestSnapshot.settings.outputFields,
+            model,
+            abortSignal: abortController.signal,
+          });
+
+          if (cancelled) return;
+
+          setResult(lookupResult.fields);
+          setValidationDecision(lookupResult.validationDecision);
           setLoading(false);
         }
       } catch (err) {
