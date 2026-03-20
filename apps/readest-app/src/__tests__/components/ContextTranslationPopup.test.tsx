@@ -119,6 +119,8 @@ describe('ContextTranslationPopup', () => {
           missingSeriesAssignment: false,
         },
       },
+      examples: [],
+      annotations: {},
       saveToVocabulary: vi.fn(),
     });
 
@@ -132,7 +134,7 @@ describe('ContextTranslationPopup', () => {
     expect(screen.queryByText('Translating...')).toBeNull();
 
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
-    expect(screen.getByText('English: Carter walked beside the prince.')).toBeTruthy();
+    expect(screen.getByText('Carter walked beside the prince.')).toBeTruthy();
     expect(container.querySelectorAll('ruby').length).toBeGreaterThan(2);
     expect(container.querySelectorAll('.bg-yellow-300\\/20').length).toBeGreaterThan(0);
   });
@@ -153,6 +155,8 @@ describe('ContextTranslationPopup', () => {
         missingSeriesAssignment: false,
       },
       popupContext: null,
+      examples: [],
+      annotations: {},
       saveToVocabulary: vi.fn(),
     });
 
@@ -200,6 +204,8 @@ describe('ContextTranslationPopup', () => {
           missingSeriesAssignment: false,
         },
       },
+      examples: [],
+      annotations: {},
       saveToVocabulary: vi.fn(),
     });
 
@@ -230,10 +236,12 @@ describe('ContextTranslationPopup', () => {
         missingSeriesAssignment: false,
       },
       popupContext: null,
+      examples: [],
+      annotations: {},
       saveToVocabulary: vi.fn(),
     });
 
-    const { container } = render(
+    render(
       <ContextTranslationPopup
         {...defaultProps}
         selectedText='知己'
@@ -241,7 +249,7 @@ describe('ContextTranslationPopup', () => {
       />,
     );
 
-    expect(container.textContent).toContain('English: True friends are hard to find.');
+    expect(screen.getByText('True friends are hard to find.')).toBeTruthy();
     expect(screen.getByText('kindred spirit')).toBeTruthy();
   });
 
@@ -264,6 +272,8 @@ describe('ContextTranslationPopup', () => {
         missingSeriesAssignment: false,
       },
       popupContext: null,
+      examples: [],
+      annotations: {},
       saveToVocabulary: vi.fn(),
     });
 
@@ -313,6 +323,8 @@ describe('ContextTranslationPopup', () => {
           missingSeriesAssignment: false,
         },
       },
+      examples: [],
+      annotations: {},
       saveToVocabulary: vi.fn(),
     });
 
@@ -323,7 +335,6 @@ describe('ContextTranslationPopup', () => {
     expect(container.textContent).toContain(
       'Mr. Dursley worked at Grunnings, a company that manufactured drills.',
     );
-    expect(container.textContent).toContain('Chinese:');
     expect(
       Array.from(container.querySelectorAll('.bg-yellow-300\\/20')).some(
         (node) => node.textContent === 'Grunnings',
