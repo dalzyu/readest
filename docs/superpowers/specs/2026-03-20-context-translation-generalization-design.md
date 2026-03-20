@@ -54,9 +54,10 @@ Each mode owns:
 - prompt contract
 - output schema
 - validation rules
-- popup renderer
+- field layout contract
+- degradation policy
 
-This avoids forcing one prompt and one renderer to serve two incompatible jobs.
+This avoids forcing one prompt and one field contract to serve two incompatible jobs.
 
 ### 2. Language-Agnostic Core Pipeline
 
@@ -80,8 +81,8 @@ Responsibilities:
 
 - declare supported features
 - enrich normalized output with language-specific metadata
-- provide rendering helpers for annotations
 - run additional language-specific validation
+- provide typed annotation data only
 
 Examples:
 
@@ -98,8 +99,35 @@ The UI should render normalized structured data instead of parsing labeled freef
 The renderer should:
 
 - show a plain baseline view for every language
-- ask the relevant plugin whether enhanced rendering is available
+- consume typed annotation data from plugins
 - remain functional even when no plugin exists
+
+Renderer ownership is centralized in this layer. Modes define field layout contracts, but plugins do not render UI directly.
+
+## Language Identification And Locale Policy
+
+Language identifiers should use BCP-47 tags where available.
+
+Examples:
+
+- `en`
+- `zh-Hans`
+- `zh-Hant`
+- `pt-BR`
+- `ja`
+
+Plugin resolution should follow a fallback chain:
+
+1. exact locale match
+2. base language match
+3. fallback plugin
+
+Examples:
+
+- `zh-Hans -> zh -> fallback`
+- `pt-BR -> pt -> fallback`
+
+The selected target language should come from the popup setting. The source language should come from the current detector, but normalized into the same BCP-47-style representation before validation or plugin selection.
 
 ## Internal Response Models
 
@@ -111,17 +139,20 @@ The LLM may still emit tagged text, JSON, or another transport shape, but the ap
 - `sourceLanguage`
 - `targetLanguage`
 - `translation`
-- `meaning`
-- `usageExamples: Array<{ sourceText: string; targetText: string }>`
+- `primaryMeaning`
+- `alternativeMeanings?: string[]`
+- `usageExamples: Array<{ sourceText: string; targetText: string; sourceTermRanges?: Array<{ start: number; end: number }>; targetTermRanges?: Array<{ start: number; end: number }> }>`
 - `notes?: string[]`
-- `pluginData?: unknown`
+- `annotations?: Record<string, TranslationAnnotations>`
 
 Rules:
 
 - `translation` must be in the target language
-- `meaning` must be in the target language
+- `primaryMeaning` must be in the target language
 - `usageExamples[].sourceText` remains in the source language
 - `usageExamples[].targetText` must be in the target language
+
+`alternativeMeanings` is optional in v1 but keeps the model forward-compatible for multi-sense outputs.
 
 ### Dictionary Mode Model
 
@@ -131,12 +162,42 @@ Rules:
 - `contextualMeaning`
 - `sourceExamples: string[]`
 - `notes?: string[]`
-- `pluginData?: unknown`
+- `annotations?: Record<string, DictionaryAnnotations>`
 
 Rules:
 
 - all primary fields remain in the source language
 - the explanation should simplify, not merely restate, the original term
+
+## Annotation Models
+
+Plugins should enrich results using typed annotation payloads rather than arbitrary `unknown` blobs.
+
+Suggested shape:
+
+- `TranslationAnnotations`
+  - `pronunciation?: PronunciationAnnotation`
+  - `segmentation?: SegmentationAnnotation`
+  - `exampleAnnotations?: ExampleAnnotation[]`
+
+- `DictionaryAnnotations`
+  - `pronunciation?: PronunciationAnnotation`
+  - `segmentation?: SegmentationAnnotation`
+
+Suggested low-level data:
+
+- `PronunciationAnnotation`
+  - `scheme`
+  - `tokens: Array<{ text: string; reading: string; stress?: number | null }>`
+
+- `SegmentationAnnotation`
+  - `tokens: Array<{ text: string; start: number; end: number }>`
+
+- `ExampleAnnotation`
+  - `sourceText`
+  - `targetText`
+  - `sourceTokens?: ...`
+  - `targetTokens?: ...`
 
 ## Plugin API
 
@@ -146,19 +207,54 @@ Suggested interface:
 
 - `supports(mode, language)`
 - `enrich(result, context)`
-- `renderInlineAnnotation(...)`
-- `renderExampleAnnotation(...)`
 - `validate(result)`
+- `fallbackLanguage(languageTag)`
 
 Guidelines:
 
 - plugins enrich normalized data rather than rewrite raw LLM output
 - core validation handles shape and cross-language rules
-- plugins add language-specific metadata and rendering support
+- plugins add language-specific metadata and language-local validation support
+- the popup renderer owns all actual UI rendering
+
+## Plugin Selection
+
+Plugin selection should be explicit.
+
+### Translation Mode
+
+Run:
+
+- source-language plugin for source-term annotations
+- target-language plugin for translated output annotations
+
+Typical usage:
+
+- source plugin enriches `term`, `sourceText`, and source-side example annotations
+- target plugin enriches `translation`, `primaryMeaning`, and target-side example annotations
+
+If both plugins enrich the same logical field, the field keeps separate source-side and target-side annotation slots rather than one merged blob.
+
+### Dictionary Mode
+
+Run:
+
+- source-language plugin only
+
+This keeps dictionary mode source-language-first and avoids accidental target-language enrichment.
 
 ## Validation And Recovery
 
 Validation must happen between LLM output and UI rendering.
+
+Validation should use layered checks rather than assuming language detection on short strings is reliable.
+
+Validation tiers:
+
+1. structural validation
+2. role validation
+3. heuristic language validation
+4. plugin-assisted validation
 
 ### Translation Validation
 
@@ -166,6 +262,16 @@ Validation must happen between LLM output and UI rendering.
 - translation must not trivially equal the source text unless unchanged borrowing is expected
 - meaning must be present and target-language-first
 - examples must preserve source and target language roles correctly
+
+Allow-rules for unchanged translation should include at least:
+
+- proper nouns and named entities
+- acronyms and initialisms
+- numeric values and codes
+- URLs, file names, identifiers, and product names
+- explicit borrowing cases accepted by plugin or validator rules
+
+Heuristic language validation should be soft for short strings and same-script language pairs. A suspicious result should produce a warning score, not an immediate hard failure, unless multiple checks agree.
 
 If validation fails:
 
@@ -177,6 +283,8 @@ Graceful degradation:
 - keep valid translation and meaning fields
 - discard malformed examples
 - avoid rendering ambiguous or misleading annotations
+- surface a non-blocking internal validation reason for telemetry
+- avoid infinite retry loops by capping retries per request
 
 ### Dictionary Validation
 
@@ -188,6 +296,17 @@ If validation fails:
 
 - retry once with a simplification-specific repair prompt
 - otherwise fall back to a shorter contextual explanation
+
+## Transport Contract
+
+The preferred LLM transport should be strict structured output, ideally JSON schema or an equivalent schema-bound response format.
+
+Priority order:
+
+1. structured schema response
+2. tagged text fallback normalized into the same internal model
+
+The normalization layer should treat tagged text as a compatibility transport only, not as the primary application contract.
 
 ## Prompt Policy
 
@@ -205,6 +324,26 @@ Prompting should become mode-aware and schema-aware.
 - forbid switching into the target language
 - request source-language examples only
 
+## Context Policy And Guardrails
+
+Because popup context is central to output quality, the core pipeline must own context policy.
+
+It should define:
+
+- max context size
+- redaction rules
+- privacy mode behavior
+- truncation order
+
+Suggested truncation order:
+
+1. local past context
+2. local future buffer
+3. same-book memory
+4. prior-volume memory
+
+Privacy mode should allow the application to send only the minimal local context needed for the selected term.
+
 ## Rendering Policy
 
 The popup UI should stop parsing ad hoc labels like `English:` and `Chinese:` as a primary mechanism.
@@ -220,16 +359,17 @@ Baseline behavior for every language:
 - readable plain text
 - no plugin requirement
 - no broken formatting when plugins are absent
+- partial valid results may render even when examples or annotations are discarded
 
 ## Rollout Plan
 
 ### Phase 1
 
-Introduce normalized internal models and validation for the translation popup without yet redesigning every language enhancement.
+Introduce normalized internal models, structured transport, and validation for the translation popup without yet redesigning every language enhancement.
 
 ### Phase 2
 
-Split translation popup and dictionary popup into separate mode-specific flows and UI components.
+Split translation popup and dictionary popup into separate mode-specific flows and UI components behind a feature flag.
 
 ### Phase 3
 
@@ -238,6 +378,21 @@ Move current Chinese-specific logic out of the core and into the first language 
 ### Phase 4
 
 Add additional plugins, starting with English, then other languages based on priority.
+
+Each phase should be protected by:
+
+- feature flags
+- kill switches
+- telemetry dashboards
+
+Track at least:
+
+- validator failure rate
+- repair retry rate
+- degraded-render rate
+- average latency
+- plugin usage by language
+- fallback-plugin usage rate
 
 ## Testing Strategy
 
@@ -257,6 +412,10 @@ Add fixtures for:
 - malformed examples
 - missing required fields
 - unsupported plugin annotations
+- proper nouns preserved as valid unchanged translations
+- acronyms and codes preserved as valid unchanged translations
+- mixed-language selections
+- very short selections
 
 ### UI Tests
 
@@ -264,6 +423,9 @@ Add fixtures for:
 - plugin-enhanced rendering
 - dictionary popup rendering
 - graceful degradation when examples or annotations are invalid
+- locale fallback rendering
+- plugin-absent rendering
+- privacy-mode reduced context behavior
 
 ### Representative Language Matrix
 
@@ -272,6 +434,14 @@ Add fixtures for:
 - `ja -> fr`
 - `ko -> en`
 - source-language dictionary mode
+
+Add edge-case coverage for:
+
+- RTL targets
+- punctuation-heavy selections
+- locale-specific variants such as `zh-Hans` and `zh-Hant`
+- same-script pairs such as `en -> fr`
+- multi-paragraph context extraction
 
 ## Recommendation
 
