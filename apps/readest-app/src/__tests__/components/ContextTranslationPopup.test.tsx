@@ -1,8 +1,17 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import ContextTranslationPopup from '@/app/reader/components/annotator/ContextTranslationPopup';
 import type { ContextTranslationSettings } from '@/services/contextTranslation/types';
+
+const mockDispatch = vi.fn();
+vi.mock('@/utils/event', () => ({
+  eventDispatcher: {
+    dispatch: (...args: unknown[]) => mockDispatch(...args),
+    on: vi.fn(),
+    off: vi.fn(),
+  },
+}));
 
 vi.mock('@/hooks/useTranslation', () => ({
   useTranslation: () => (value: string) => value,
@@ -132,6 +141,39 @@ describe('ContextTranslationPopup', () => {
     expect(highlightedNodes.length).toBeGreaterThan(0);
   });
 
+  test('renders a speak button that dispatches tts-speak with text and bookKey', () => {
+    mockUseContextTranslation.mockReturnValue({
+      result: { translation: 'by his side' },
+      partialResult: null,
+      loading: false,
+      streaming: false,
+      activeFieldId: null,
+      error: null,
+      retrievalStatus: 'local-only',
+      retrievalHints: {
+        currentVolumeIndexed: false,
+        missingLocalIndex: true,
+        missingPriorVolumes: [],
+        missingSeriesAssignment: false,
+      },
+      popupContext: null,
+      saveToVocabulary: vi.fn(),
+    });
+
+    render(<ContextTranslationPopup {...defaultProps} />);
+
+    const speakBtns = screen.getAllByRole('button', { name: 'Speak' });
+    expect(speakBtns.length).toBeGreaterThan(0);
+
+    fireEvent.click(speakBtns[0]!);
+
+    expect(mockDispatch).toHaveBeenCalledWith('tts-speak', {
+      bookKey: 'book-key-1',
+      text: '身侧',
+      oneTime: true,
+    });
+  });
+
   test('uses a secondary highlight color for spacing-variant example matches and omits invalid examples', () => {
     mockUseContextTranslation.mockReturnValue({
       result: {
@@ -167,9 +209,7 @@ describe('ContextTranslationPopup', () => {
       saveToVocabulary: vi.fn(),
     });
 
-    const { container } = render(
-      <ContextTranslationPopup {...defaultProps} selectedText='身侧' />,
-    );
+    const { container } = render(<ContextTranslationPopup {...defaultProps} selectedText='身侧' />);
 
     expect(container.querySelectorAll('ol > li')).toHaveLength(1);
     expect(screen.queryByText('English: The crowd backed away.')).toBeNull();

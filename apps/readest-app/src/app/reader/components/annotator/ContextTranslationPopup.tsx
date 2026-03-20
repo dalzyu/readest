@@ -1,8 +1,9 @@
 import React from 'react';
 import { pinyin } from 'pinyin-pro';
 import { PiInfo } from 'react-icons/pi';
-import { RiBookmarkFill, RiBookmarkLine } from 'react-icons/ri';
+import { RiBookmarkFill, RiBookmarkLine, RiVolumeUpLine } from 'react-icons/ri';
 import Popup from '@/components/Popup';
+import { eventDispatcher } from '@/utils/event';
 import { useContextTranslation } from '@/hooks/useContextTranslation';
 import useOpenAIInNotebook from '@/app/reader/hooks/useOpenAIInNotebook';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -159,7 +160,10 @@ function stripExampleNumbering(value: string): string {
 }
 
 function parseExampleItem(item: string): ParsedExampleItem {
-  const lines = item.split('\n').map((line) => line.trim()).filter(Boolean);
+  const lines = item
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
   const [firstLine = ''] = lines;
 
   return {
@@ -180,9 +184,7 @@ function formatVolumeList(values: number[]): string {
   return values.join(', ');
 }
 
-function getRetrievalStatusMeta(
-  status: RetrievalStatus,
-): { label: string; className: string } {
+function getRetrievalStatusMeta(status: RetrievalStatus): { label: string; className: string } {
   switch (status) {
     case 'cross-volume':
       return {
@@ -249,9 +251,7 @@ function buildAskAboutThisMessage(
     `Selection:\n${selectedText}`,
     ...resultSections,
     `Local Past Context:\n${popupContext.localPastContext || '[none]'}`,
-    popupContext.localFutureBuffer
-      ? `Local Future Buffer:\n${popupContext.localFutureBuffer}`
-      : '',
+    popupContext.localFutureBuffer ? `Local Future Buffer:\n${popupContext.localFutureBuffer}` : '',
     popupContext.sameBookChunks.length > 0
       ? `Same-Book Memory:\n${popupContext.sameBookChunks.join('\n\n')}`
       : '',
@@ -308,6 +308,14 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
   const retrievalStatusMeta = getRetrievalStatusMeta(retrievalStatus);
   const retrievalInfoText = buildRetrievalInfoText(retrievalStatus, retrievalHints);
 
+  const handleSpeak = () => {
+    eventDispatcher.dispatch('tts-speak', {
+      bookKey,
+      text: selectedText,
+      oneTime: true,
+    });
+  };
+
   const handleSave = async () => {
     await saveToVocabulary();
     setSaved(true);
@@ -337,7 +345,16 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
       >
         <div className='flex items-center justify-between border-b border-gray-500/30 px-4 py-3'>
           <div className='flex min-w-0 flex-col gap-2'>
-            <span className='not-eink:text-yellow-300 flex min-w-0 items-center gap-2 select-text font-medium'>
+            <span className='not-eink:text-yellow-300 flex min-w-0 select-text items-center gap-2 font-medium'>
+              <button
+                type='button'
+                onClick={handleSpeak}
+                title={_('Speak')}
+                className='flex-shrink-0 text-green-200/70 transition-colors hover:text-green-100'
+                aria-label={_('Speak')}
+              >
+                <RiVolumeUpLine size={16} />
+              </button>
               <span className='line-clamp-1'>{selectedText}</span>
               {selectedTextPinyin ? (
                 <span className='truncate text-sm font-normal text-cyan-200'>
@@ -368,7 +385,7 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
               disabled={!result || streaming || !popupContext}
               className='rounded-full border border-cyan-400/40 px-3 py-1 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-300 hover:text-cyan-100 disabled:opacity-40'
             >
-              {_( 'Ask About This')}
+              {_('Ask About This')}
             </button>
             <button
               onClick={handleSave}
@@ -404,7 +421,7 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
                     {_(field.label)}
                   </h3>
                   {field.id === 'examples' && exampleItems.length > 0 ? (
-                    <ol className='not-eink:text-white/90 list-decimal space-y-4 pl-5 select-text text-sm leading-relaxed'>
+                    <ol className='not-eink:text-white/90 select-text list-decimal space-y-4 pl-5 text-sm leading-relaxed'>
                       {exampleItems.map((item, index) => {
                         const parsedExample = parseExampleItem(item);
 
@@ -440,7 +457,7 @@ const ContextTranslationPopup: React.FC<ContextTranslationPopupProps> = ({
                       })}
                     </ol>
                   ) : (
-                    <p className='not-eink:text-white/90 whitespace-pre-wrap select-text text-sm leading-relaxed'>
+                    <p className='not-eink:text-white/90 select-text whitespace-pre-wrap text-sm leading-relaxed'>
                       {value || (streaming ? _('Waiting...') : '')}
                       {isActive ? <span className='ml-1 animate-pulse'>|</span> : null}
                     </p>

@@ -359,7 +359,7 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
 
   // handleTTSSpeak / handleTTSStop (plain functions, registered once at mount via closure)
   const handleTTSSpeak = async (event: CustomEvent) => {
-    const { bookKey: ttsBookKey, range, index, oneTime = false } = event.detail;
+    const { bookKey: ttsBookKey, range, index, oneTime = false, text: speakText } = event.detail;
     if (bookKey !== ttsBookKey) return;
 
     const view = getView(bookKey);
@@ -437,9 +437,11 @@ export const useTTSControl = ({ bookKey, onRequestHidePanel }: UseTTSControlProp
       const ssml =
         oneTime && ttsSpeakRange
           ? genSSMLRaw(ttsSpeakRange.toString().trim())
-          : ttsFromRange
-            ? view.tts?.from(ttsFromRange)
-            : view.tts?.start();
+          : oneTime && speakText
+            ? genSSMLRaw((speakText as string).trim())
+            : ttsFromRange
+              ? view.tts?.from(ttsFromRange)
+              : view.tts?.start();
       if (ssml) {
         const lang = parseSSMLLang(ssml, primaryLang) || 'en';
         setIsPlaying(true);
